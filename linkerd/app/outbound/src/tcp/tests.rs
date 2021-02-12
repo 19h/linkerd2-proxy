@@ -10,7 +10,11 @@ use crate::{
     Config, Outbound,
 };
 use linkerd_app_core::{
-    io, svc, svc::NewService, tls, transport::AcceptAddrs, Conditional, Error, IpMatch,
+    io, svc,
+    svc::NewService,
+    tls,
+    transport::{AcceptAddrs, ClientAddr, Local, OrigDstAddr, Remote, ServerAddr},
+    Conditional, Error, IpMatch,
 };
 use std::{
     future::Future,
@@ -720,11 +724,11 @@ async fn profile_endpoint_propagates_conn_errors() {
     // Build the outbound server
     let mut server = build_server(cfg, profiles, resolver, connect);
 
-    let svc = server.new_service(listen::Addrs::new(
-        ([127, 0, 0, 1], 4140).into(),
-        ([127, 0, 0, 1], 666).into(),
-        Some(ep1),
-    ));
+    let svc = server.new_service(AcceptAddrs {
+        local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
+        client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
+        orig_dst: Some(OrigDstAddr(ep1)),
+    });
 
     let res = svc
         .oneshot(
@@ -815,7 +819,7 @@ fn hello_world_client<N, S>(
     new_svc: &mut N,
 ) -> impl Future<Output = ()> + Send
 where
-    N: svc::NewService<listen::Addrs, Service = S> + Send + 'static,
+    N: svc::NewService<AcceptAddrs, Service = S> + Send + 'static,
     S: svc::Service<support::io::Mock, Response = ()> + Send + 'static,
     S::Error: Into<Error>,
     S::Future: Send + 'static,
@@ -823,11 +827,11 @@ where
     let span = tracing::info_span!("hello_world_client", %orig_dst);
     let svc = {
         let _e = span.enter();
-        let addrs = listen::Addrs::new(
-            ([127, 0, 0, 1], 4140).into(),
-            ([127, 0, 0, 1], 666).into(),
-            Some(orig_dst),
-        );
+        let addrs = AcceptAddrs {
+            local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
+            client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
+            orig_dst: Some(OrigDstAddr(orig_dst)),
+        };
         let svc = new_svc.new_service(addrs);
         tracing::trace!("new service");
         svc

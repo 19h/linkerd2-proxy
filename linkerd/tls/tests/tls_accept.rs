@@ -10,7 +10,7 @@ use linkerd_conditional::Conditional;
 use linkerd_error::Never;
 use linkerd_identity as id;
 use linkerd_io::{self as io, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use linkerd_proxy_transport::{listen::Addrs, BindTcp, ConnectAddr, ConnectTcp};
+use linkerd_proxy_transport::{AcceptAddrs, BindTcp, ConnectAddr, ConnectTcp};
 use linkerd_stack::{NewService, Param};
 use linkerd_tls as tls;
 use std::future::Future;
@@ -129,7 +129,7 @@ where
     CF: Future<Output = Result<CR, io::Error>> + Send + 'static,
     CR: Send + 'static,
     // Server
-    S: Fn(tls::server::Connection<Addrs, TcpStream>) -> SF + Clone + Send + 'static,
+    S: Fn(tls::server::Connection<AcceptAddrs, TcpStream>) -> SF + Clone + Send + 'static,
     SF: Future<Output = Result<SR, io::Error>> + Send + 'static,
     SR: Send + 'static,
 {
@@ -161,7 +161,7 @@ where
 
         let mut detect = tls::NewDetectTls::new(
             server_tls.map(Tls),
-            move |meta: tls::server::Meta<Addrs>| {
+            move |meta: tls::server::Meta<AcceptAddrs>| {
                 let server = server.clone();
                 let sender = sender.clone();
                 let tls = Some(meta.0.clone().map(Into::into));
