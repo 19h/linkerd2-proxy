@@ -502,7 +502,7 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
 
         // Ensure that connections thaat directly target the inbound port are
         // secured (unless identity is disabled).
-        let inbound_port = server.bind.bind_addr().port();
+        let inbound_port = server.bind.bind_addr().as_ref().port();
         if !id_disabled && !require_identity_for_inbound_ports.contains(&inbound_port) {
             debug!(
                 "Adding {} to {}",

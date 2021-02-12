@@ -6,15 +6,19 @@ mod tests;
 
 use crate::target;
 pub use linkerd_app_core::proxy::tcp::Forward;
-use linkerd_app_core::{svc::stack::Param, transport::listen, transport_header::SessionProtocol};
+use linkerd_app_core::{
+    svc::stack::Param, transport::AcceptAddrs, transport_header::SessionProtocol,
+};
 
 pub type Accept = target::Accept<()>;
 pub type Logical = target::Logical<()>;
 pub type Concrete = target::Concrete<()>;
 pub type Endpoint = target::Endpoint<()>;
 
-impl From<listen::Addrs> for Accept {
-    fn from(addrs: listen::Addrs) -> Self {
+// FIXME this should actually use the OrigDstAddr type to prove its an original
+// dst addr.
+impl From<AcceptAddrs> for Accept {
+    fn from(addrs: AcceptAddrs) -> Self {
         Self {
             orig_dst: addrs.target_addr(),
             protocol: (),

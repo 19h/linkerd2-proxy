@@ -1,7 +1,7 @@
 use crate::{tcp, Outbound};
 use linkerd_app_core::{
     discovery_rejected, io, profiles, svc,
-    transport::{listen, metrics::SensorIo},
+    transport::{metrics::SensorIo, AcceptAddrs},
     Error, IpMatch,
 };
 
@@ -14,7 +14,7 @@ impl<N> Outbound<N> {
         profiles: P,
     ) -> Outbound<
         impl svc::NewService<
-            listen::Addrs,
+            AcceptAddrs,
             Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send> + Clone,
         >,
     >
@@ -59,7 +59,7 @@ impl<N> Outbound<N> {
             .push_cache(config.proxy.cache_max_idle_age)
             .check_new_service::<tcp::Accept, I>()
             .push_map_target(tcp::Accept::from)
-            .check_new_service::<listen::Addrs, I>();
+            .check_new_service::<AcceptAddrs, I>();
 
         Outbound {
             config,

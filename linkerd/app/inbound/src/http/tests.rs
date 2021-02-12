@@ -12,7 +12,7 @@ use linkerd_app_core::{
     proxy,
     svc::{self, stack::Param, NewService},
     tls,
-    transport::{self, ConnectAddr},
+    transport::{self, ClientAddr, ConnectAddr, Remote},
     Conditional, Error, NameAddr, ProxyRuntime,
 };
 use tracing::Instrument;
@@ -58,7 +58,7 @@ async fn unmeshed_http1_hello_world() {
         version: proxy::http::Version::Http1,
         tcp: TcpAccept {
             target_addr: ([127, 0, 0, 1], 5550).into(),
-            client_addr: ([10, 0, 0, 41], 6894).into(),
+            client_addr: Remote(ClientAddr(([10, 0, 0, 41], 6894).into())),
             tls: Conditional::None(tls::server::NoServerTls::NoClientHello),
         },
     };
@@ -105,7 +105,7 @@ async fn downgrade_origin_form() {
         version: proxy::http::Version::H2,
         tcp: TcpAccept {
             target_addr: ([127, 0, 0, 1], 5550).into(),
-            client_addr: ([10, 0, 0, 41], 6894).into(),
+            client_addr: Remote(ClientAddr(([10, 0, 0, 41], 6894).into())),
             tls: Conditional::None(tls::server::NoServerTls::NoClientHello),
         },
     };
@@ -153,7 +153,7 @@ async fn downgrade_absolute_form() {
         version: proxy::http::Version::H2,
         tcp: TcpAccept {
             target_addr: ([127, 0, 0, 1], 5550).into(),
-            client_addr: ([10, 0, 0, 41], 6894).into(),
+            client_addr: Remote(ClientAddr(([10, 0, 0, 41], 6894).into())),
             tls: Conditional::None(tls::server::NoServerTls::NoClientHello),
         },
     };

@@ -11,7 +11,7 @@ pub use self::{
 use linkerd_stack::Param;
 use std::{
     fmt,
-    net::{IpAddr, SocketAddr, ToSocketAddrs},
+    net::{SocketAddr, ToSocketAddrs},
     time::Duration,
 };
 use tokio::{io, net::TcpStream};
@@ -19,8 +19,8 @@ use tokio::{io, net::TcpStream};
 /// A target types representing an accepted connections.
 #[derive(Copy, Clone, Debug)]
 pub struct AcceptAddrs {
-    pub local: LocalAddr,
-    pub client: ClientAddr,
+    pub local: Local<ServerAddr>,
+    pub client: Remote<ClientAddr>,
     pub orig_dst: Option<OrigDstAddr>,
 }
 
@@ -34,7 +34,7 @@ pub struct ListenAddr(pub SocketAddr);
 
 /// The address of a local server.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct LocalAddr(pub SocketAddr);
+pub struct ServerAddr(pub SocketAddr);
 
 /// An SO_ORIGINAL_DST address.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -42,6 +42,15 @@ pub struct OrigDstAddr(pub SocketAddr);
 
 #[derive(Copy, Clone, Debug)]
 pub struct Keepalive(pub Option<Duration>);
+
+/// Wraps an address type to indicate it describes an address describing this
+/// process.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Local<T>(pub T);
+
+/// Wraps an address type to indicate it describes another process.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Remote<T>(pub T);
 
 // === impl Addrs ===
 
@@ -51,19 +60,18 @@ impl AcceptAddrs {
             return a;
         }
 
-        let LocalAddr(a) = self.local;
-        a
+        self.local.into()
     }
 }
 
-impl Param<ClientAddr> for AcceptAddrs {
-    fn param(&self) -> ClientAddr {
+impl Param<Remote<ClientAddr>> for AcceptAddrs {
+    fn param(&self) -> Remote<ClientAddr> {
         self.client
     }
 }
 
-impl Param<LocalAddr> for AcceptAddrs {
-    fn param(&self) -> LocalAddr {
+impl Param<Local<ServerAddr>> for AcceptAddrs {
+    fn param(&self) -> Local<ServerAddr> {
         self.local
     }
 }
@@ -76,19 +84,15 @@ impl Param<Option<OrigDstAddr>> for AcceptAddrs {
 
 // === impl ClientAddr ===
 
-impl Into<SocketAddr> for ClientAddr {
-    fn into(self) -> SocketAddr {
-        self.0
+impl AsRef<SocketAddr> for ClientAddr {
+    fn as_ref(&self) -> &SocketAddr {
+        &self.0
     }
 }
 
-impl ClientAddr {
-    pub fn ip(&self) -> IpAddr {
-        self.0.ip()
-    }
-
-    pub fn port(&self) -> u16 {
-        self.0.port()
+impl Into<SocketAddr> for ClientAddr {
+    fn into(self) -> SocketAddr {
+        self.0
     }
 }
 
@@ -99,6 +103,12 @@ impl fmt::Display for ClientAddr {
 }
 
 // === impl ListenAddr ===
+
+impl AsRef<SocketAddr> for ListenAddr {
+    fn as_ref(&self) -> &SocketAddr {
+        &self.0
+    }
+}
 
 impl Into<SocketAddr> for ListenAddr {
     fn into(self) -> SocketAddr {
@@ -114,41 +124,27 @@ impl ToSocketAddrs for ListenAddr {
     }
 }
 
-impl ListenAddr {
-    pub fn ip(&self) -> IpAddr {
-        self.0.ip()
-    }
-
-    pub fn port(&self) -> u16 {
-        self.0.port()
-    }
-}
-
 impl fmt::Display for ListenAddr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-// === impl LocalAddr ===
+// === impl ServerAddr ===
 
-impl Into<SocketAddr> for LocalAddr {
+impl AsRef<SocketAddr> for ServerAddr {
+    fn as_ref(&self) -> &SocketAddr {
+        &self.0
+    }
+}
+
+impl Into<SocketAddr> for ServerAddr {
     fn into(self) -> SocketAddr {
         self.0
     }
 }
 
-impl LocalAddr {
-    pub fn ip(&self) -> IpAddr {
-        self.0.ip()
-    }
-
-    pub fn port(&self) -> u16 {
-        self.0.port()
-    }
-}
-
-impl fmt::Display for LocalAddr {
+impl fmt::Display for ServerAddr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
@@ -156,23 +152,59 @@ impl fmt::Display for LocalAddr {
 
 // === impl OrigDstAddr ===
 
+impl AsRef<SocketAddr> for OrigDstAddr {
+    fn as_ref(&self) -> &SocketAddr {
+        &self.0
+    }
+}
+
 impl Into<SocketAddr> for OrigDstAddr {
     fn into(self) -> SocketAddr {
         self.0
     }
 }
 
-impl OrigDstAddr {
-    pub fn ip(&self) -> IpAddr {
-        self.0.ip()
-    }
-
-    pub fn port(&self) -> u16 {
-        self.0.port()
+impl fmt::Display for OrigDstAddr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
-impl fmt::Display for OrigDstAddr {
+// === impl Local ===
+
+impl<T: AsRef<SocketAddr>> AsRef<SocketAddr> for Local<T> {
+    fn as_ref(&self) -> &SocketAddr {
+        self.0.as_ref()
+    }
+}
+
+impl<T: Into<SocketAddr>> Into<SocketAddr> for Local<T> {
+    fn into(self) -> SocketAddr {
+        self.0.into()
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for Local<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+// === impl Remote ===
+
+impl<T: AsRef<SocketAddr>> AsRef<SocketAddr> for Remote<T> {
+    fn as_ref(&self) -> &SocketAddr {
+        self.0.as_ref()
+    }
+}
+
+impl<T: Into<SocketAddr>> Into<SocketAddr> for Remote<T> {
+    fn into(self) -> SocketAddr {
+        self.0.into()
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for Remote<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }

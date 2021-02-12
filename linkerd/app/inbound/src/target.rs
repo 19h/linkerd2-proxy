@@ -6,7 +6,7 @@ use linkerd_app_core::{
     stack_tracing,
     svc::{self, stack::Param},
     tls,
-    transport::{self, listen, ClientAddr},
+    transport::{self, AcceptAddrs, ClientAddr, Remote},
     transport_header::TransportHeader,
     Addr, Conditional, Error, CANONICAL_DST_HEADER, DST_OVERRIDE_HEADER,
 };
@@ -16,7 +16,7 @@ use tracing::debug;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TcpAccept {
     pub target_addr: SocketAddr,
-    pub client_addr: ClientAddr,
+    pub client_addr: Remote<ClientAddr>,
     pub tls: tls::ConditionalServerTls,
 }
 
@@ -60,7 +60,7 @@ pub struct RequestTarget {
 // === impl TcpAccept ===
 
 impl TcpAccept {
-    pub fn port_skipped(tcp: listen::Addrs) -> Self {
+    pub fn port_skipped(tcp: AcceptAddrs) -> Self {
         Self {
             target_addr: tcp.target_addr(),
             client_addr: tcp.client,
@@ -69,8 +69,8 @@ impl TcpAccept {
     }
 }
 
-impl From<tls::server::Meta<listen::Addrs>> for TcpAccept {
-    fn from((tls, addrs): tls::server::Meta<listen::Addrs>) -> Self {
+impl From<tls::server::Meta<AcceptAddrs>> for TcpAccept {
+    fn from((tls, addrs): tls::server::Meta<AcceptAddrs>) -> Self {
         Self {
             target_addr: addrs.target_addr(),
             client_addr: addrs.client,

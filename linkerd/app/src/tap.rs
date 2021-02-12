@@ -2,7 +2,7 @@ use futures::prelude::*;
 use indexmap::IndexSet;
 use linkerd_app_core::{
     config::ServerConfig, drain, proxy::identity::LocalCrtKey, proxy::tap, serve, tls,
-    transport::listen::Addrs, Error,
+    transport::AcceptAddrs, Error,
 };
 use std::{net::SocketAddr, pin::Pin};
 use tower::util::{service_fn, ServiceExt};
@@ -44,7 +44,7 @@ impl Config {
                 let service = tap::AcceptPermittedClients::new(permitted_client_ids.into(), server);
                 let accept = tls::NewDetectTls::new(
                     identity,
-                    move |meta: tls::server::Meta<Addrs>| {
+                    move |meta: tls::server::Meta<AcceptAddrs>| {
                         let service = service.clone();
                         service_fn(move |io| {
                             let fut = service.clone().oneshot((meta.clone(), io));

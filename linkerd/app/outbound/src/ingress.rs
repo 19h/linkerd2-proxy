@@ -3,7 +3,7 @@ use linkerd_app_core::{
     config::{ProxyConfig, ServerConfig},
     detect, discovery_rejected, drain, errors, http_request_l5d_override_dst_addr, http_tracing,
     io, profiles, svc, tls,
-    transport::{self, listen},
+    transport::{self, AcceptAddrs},
     Addr, AddrMatch, Error,
 };
 use tracing::{debug_span, info_span};
@@ -21,7 +21,7 @@ impl Outbound<()> {
         tcp: T,
         http: H,
     ) -> impl svc::NewService<
-        listen::Addrs,
+        AcceptAddrs,
         Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send>,
     >
     where
@@ -131,7 +131,7 @@ impl Outbound<()> {
             .check_new_service::<tcp::Accept, transport::metrics::SensorIo<I>>()
             .push(self.runtime.metrics.transport.layer_accept())
             .push_map_target(tcp::Accept::from)
-            .check_new_service::<listen::Addrs, I>()
+            .check_new_service::<AcceptAddrs, I>()
             // Boxing is necessary purely to limit the link-time overhead of
             // having enormous types.
             .push(svc::BoxNewService::layer())

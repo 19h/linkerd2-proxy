@@ -2,7 +2,7 @@ use crate::io;
 use crate::svc;
 use futures::prelude::*;
 use linkerd_error::Error;
-use linkerd_proxy_transport::listen::Addrs;
+use linkerd_proxy_transport::AcceptAddrs;
 use tower::util::ServiceExt;
 use tracing::instrument::Instrument;
 use tracing::{debug, info, info_span, warn};
@@ -12,13 +12,13 @@ use tracing::{debug, info, info_span, warn};
 ///
 /// The task is driven until shutdown is signaled.
 pub async fn serve<M, A, I>(
-    listen: impl Stream<Item = std::io::Result<(Addrs, I)>>,
+    listen: impl Stream<Item = std::io::Result<(AcceptAddrs, I)>>,
     mut new_accept: M,
     shutdown: impl Future,
 ) -> Result<(), Error>
 where
     I: Send + 'static,
-    M: svc::NewService<Addrs, Service = A>,
+    M: svc::NewService<AcceptAddrs, Service = A>,
     A: tower::Service<io::ScopedIo<I>, Response = ()> + Send + 'static,
     A::Error: Into<Error>,
     A::Future: Send + 'static,

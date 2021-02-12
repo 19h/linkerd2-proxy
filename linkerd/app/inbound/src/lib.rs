@@ -26,7 +26,7 @@ use linkerd_app_core::{
     proxy::tcp,
     svc::{self, stack::Param},
     tls,
-    transport::{self, listen},
+    transport::{self, AcceptAddrs},
     Error, NameMatch, ProxyRuntime,
 };
 use std::{fmt::Debug, time::Duration};
@@ -177,7 +177,7 @@ where
         profiles: P,
         gateway: G,
     ) -> impl svc::NewService<
-        listen::Addrs,
+        AcceptAddrs,
         Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send>,
     > + Clone
     where
@@ -221,7 +221,7 @@ where
                 self.runtime.identity.clone(),
                 config.detect_protocol_timeout,
             ))
-            .check_new_service::<listen::Addrs, I>()
+            .check_new_service::<AcceptAddrs, I>()
             .push_switch(
                 disable_detect,
                 self.clone()
@@ -230,19 +230,19 @@ where
                     .push_map_target(TcpEndpoint::from)
                     .push(self.runtime.metrics.transport.layer_accept())
                     .push_map_target(TcpAccept::port_skipped)
-                    .check_new_service::<listen::Addrs, I>()
+                    .check_new_service::<AcceptAddrs, I>()
                     .into_inner(),
             )
-            .check_new_service::<listen::Addrs, I>()
+            .check_new_service::<AcceptAddrs, I>()
             .push_switch(
                 PreventLoop::from(server_port),
                 self.push_tcp_forward(server_port)
                     .push_direct(gateway)
                     .stack
-                    .check_new_service::<listen::Addrs, I>()
+                    .check_new_service::<AcceptAddrs, I>()
                     .into_inner(),
             )
-            .check_new_service::<listen::Addrs, I>()
+            .check_new_service::<AcceptAddrs, I>()
             .into_inner()
     }
 }
@@ -255,10 +255,10 @@ impl From<indexmap::IndexSet<u16>> for SkipByPort {
     }
 }
 
-impl svc::Predicate<listen::Addrs> for SkipByPort {
-    type Request = svc::Either<listen::Addrs, listen::Addrs>;
+impl svc::Predicate<AcceptAddrs> for SkipByPort {
+    type Request = svc::Either<AcceptAddrs, AcceptAddrs>;
 
-    fn check(&mut self, t: listen::Addrs) -> Result<Self::Request, Error> {
+    fn check(&mut self, t: AcceptAddrs) -> Result<Self::Request, Error> {
         if !self.0.contains(&t.target_addr().port()) {
             Ok(svc::Either::A(t))
         } else {

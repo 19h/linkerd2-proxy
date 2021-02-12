@@ -19,7 +19,7 @@ use linkerd_app_core::{
     io, metrics, profiles,
     proxy::{api_resolve::Metadata, core::Resolve},
     svc, tls,
-    transport::listen,
+    transport::AcceptAddrs,
     AddrMatch, Error, ProxyRuntime,
 };
 use std::{collections::HashMap, time::Duration};
@@ -88,7 +88,7 @@ impl<S> Outbound<S> {
         resolve: R,
         profiles: P,
     ) -> impl svc::NewService<
-        listen::Addrs,
+        AcceptAddrs,
         Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send>,
     >
     where

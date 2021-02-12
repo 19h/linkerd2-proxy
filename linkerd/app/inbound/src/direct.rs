@@ -4,7 +4,7 @@ use linkerd_app_core::{
     proxy::identity::LocalCrtKey,
     svc::{self, stack::Param},
     tls,
-    transport::{self, listen, metrics::SensorIo},
+    transport::{self, metrics::SensorIo, AcceptAddrs},
     transport_header::{self, NewTransportHeaderServer, SessionProtocol, TransportHeader},
     Conditional, Error, NameAddr, Never,
 };
@@ -66,7 +66,7 @@ impl<T> Inbound<T> {
         gateway: G,
     ) -> Inbound<
         impl svc::NewService<
-                listen::Addrs,
+                AcceptAddrs,
                 Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send>,
             > + Clone,
     >
@@ -164,7 +164,7 @@ impl<T> Inbound<T> {
                 rt.identity.clone().map(WithTransportHeaderAlpn),
                 detect_timeout,
             ))
-            .check_new_service::<listen::Addrs, I>();
+            .check_new_service::<AcceptAddrs, I>();
 
         Inbound {
             config,
@@ -176,11 +176,11 @@ impl<T> Inbound<T> {
 
 // === impl ClientInfo ===
 
-impl TryFrom<(tls::ConditionalServerTls, listen::Addrs)> for ClientInfo {
+impl TryFrom<(tls::ConditionalServerTls, AcceptAddrs)> for ClientInfo {
     type Error = RefusedNoIdentity;
 
     fn try_from(
-        (tls, addrs): (tls::ConditionalServerTls, listen::Addrs),
+        (tls, addrs): (tls::ConditionalServerTls, AcceptAddrs),
     ) -> Result<Self, Self::Error> {
         match tls {
             Conditional::Some(tls::ServerTls::Established {

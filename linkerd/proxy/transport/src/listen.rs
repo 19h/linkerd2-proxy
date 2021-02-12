@@ -1,4 +1,4 @@
-use crate::{ClientAddr, ListenAddr, LocalAddr, OrigDstAddr};
+use crate::{AcceptAddrs, ClientAddr, ListenAddr, Local, OrigDstAddr, Remote, ServerAddr};
 use async_stream::try_stream;
 use futures::prelude::*;
 use std::{io, net::SocketAddr, time::Duration};
@@ -17,14 +17,7 @@ pub struct BindTcp<O: GetOrigDstAddr = NoOrigDstAddr> {
     orig_dst_addr: O,
 }
 
-pub type Connection = (Addrs, TcpStream);
-
-#[derive(Clone, Debug)]
-pub struct Addrs {
-    pub local: LocalAddr,
-    pub client: ClientAddr,
-    pub orig_dst: Option<OrigDstAddr>,
-}
+pub type Connection = (AcceptAddrs, TcpStream);
 
 #[derive(Copy, Clone, Debug)]
 pub struct NoOrigDstAddr(());
@@ -80,22 +73,21 @@ impl<A: GetOrigDstAddr> BindTcp<A> {
                 let listen = tokio::net::TcpListener::from_std(listen).expect("listener must be valid");
             };
 
-            while let (tcp, c) = listen.accept().await? {
+            while let (tcp, client_addr) = listen.accept().await? {
                 super::set_nodelay_or_warn(&tcp);
                 super::set_keepalive_or_warn(&tcp, keepalive);
 
-                let client = ClientAddr(c);
-                let local = tcp.local_addr().map(LocalAddr)?;
+                let local_addr = tcp.local_addr()?;
                 let orig_dst = get_orig.orig_dst_addr(&tcp);
                 trace!(
-                    local.addr = %local,
-                    client.addr = %client,
+                    local.addr = %local_addr,
+                    client.addr = %client_addr,
                     orig.addr = ?orig_dst,
                     "Accepted",
                 );
-                let addrs = Addrs {
-                    local,
-                    client,
+                let addrs = AcceptAddrs {
+                    local: Local(ServerAddr(local_addr)),
+                    client: Remote(ClientAddr(client_addr)),
                     orig_dst
                 };
                 yield (addrs, tcp);
@@ -103,20 +95,6 @@ impl<A: GetOrigDstAddr> BindTcp<A> {
         };
 
         Ok((addr, accept))
-    }
-}
-
-impl Addrs {
-    pub fn target_addr(&self) -> SocketAddr {
-        self.orig_dst
-            .map(Into::into)
-            .unwrap_or_else(|| self.local.into())
-    }
-}
-
-impl Into<SocketAddr> for &'_ Addrs {
-    fn into(self) -> SocketAddr {
-        self.target_addr()
     }
 }
 

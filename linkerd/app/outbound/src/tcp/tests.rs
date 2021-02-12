@@ -10,7 +10,7 @@ use crate::{
     Config, Outbound,
 };
 use linkerd_app_core::{
-    io, svc, svc::NewService, tls, transport::listen, Conditional, Error, IpMatch,
+    io, svc, svc::NewService, tls, transport::AcceptAddrs, Conditional, Error, IpMatch,
 };
 use std::{
     future::Future,
@@ -788,7 +788,7 @@ fn build_server<I>(
     resolver: resolver::Dst<resolver::Metadata>,
     connect: Connect<Endpoint>,
 ) -> impl svc::NewService<
-    listen::Addrs,
+    AcceptAddrs,
     Service = impl tower::Service<
         I,
         Response = (),

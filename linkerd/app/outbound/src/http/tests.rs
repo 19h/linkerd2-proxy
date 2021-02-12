@@ -13,7 +13,7 @@ use linkerd_app_core::{
     io,
     svc::{self, NewService},
     tls,
-    transport::listen,
+    transport::{AcceptAddrs, Remote, ClientAddr, OrigDstAddr, Local, ServerAddr},
     Error, ProxyRuntime,
 };
 use std::{
@@ -34,7 +34,7 @@ fn build_server<I>(
     resolver: resolver::Dst<resolver::Metadata>,
     connect: Connect<Endpoint>,
 ) -> impl svc::NewService<
-    listen::Addrs,
+    AcceptAddrs,
     Service = impl tower::Service<
         I,
         Response = (),
@@ -111,13 +111,12 @@ async fn profile_endpoint_propagates_conn_errors() {
     // This test asserts that when profile resolution returns an endpoint, and
     // connecting to that endpoint fails, the client connection will also be reset.
     let _trace = support::trace_init();
-
     let ep1 = SocketAddr::new([10, 0, 0, 41].into(), 5550);
-    let addrs = listen::Addrs::new(
-        ([127, 0, 0, 1], 4140).into(),
-        ([127, 0, 0, 1], 666).into(),
-        Some(ep1),
-    );
+    let addrs = AcceptAddrs {
+        local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
+        client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
+        orig_dst: Some(OrigDstAddr(ep1)),
+    };
 
     let cfg = default_config(ep1);
     let id = tls::ServerId::from_str("foo.ns1.serviceaccount.identity.linkerd.cluster.local")
@@ -222,7 +221,7 @@ async fn meshed_hello_world() {
     let _trace = support::trace_init();
 
     let ep1 = SocketAddr::new([10, 0, 0, 41].into(), 5550);
-    let addrs = listen::Addrs::new(
+    let addrs = listen::Addrs {
         ([127, 0, 0, 1], 4140).into(),
         ([127, 0, 0, 1], 666).into(),
         Some(ep1),

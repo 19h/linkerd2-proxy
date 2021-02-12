@@ -4,7 +4,7 @@ use crate::core::{
     detect, drain, errors,
     metrics::{self, FmtMetrics},
     serve, tls, trace,
-    transport::listen,
+    transport::AcceptAddrs,
     Error,
 };
 use crate::{
@@ -70,7 +70,7 @@ impl Config {
             ))
             .push(metrics.transport.layer_accept())
             .push_map_target(TcpAccept::from)
-            .check_new_clone::<tls::server::Meta<listen::Addrs>>()
+            .check_new_clone::<tls::server::Meta<AcceptAddrs>>()
             .push(tls::NewDetectTls::layer(identity, DETECT_TIMEOUT))
             .into_inner();
 
