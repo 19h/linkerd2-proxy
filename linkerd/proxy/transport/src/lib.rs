@@ -1,16 +1,190 @@
 #![deny(warnings, rust_2018_idioms)]
 
-use std::time::Duration;
-use tokio::net::TcpStream;
-
 mod connect;
 pub mod listen;
 pub mod metrics;
 
 pub use self::{
     connect::{ConnectAddr, ConnectTcp},
-    listen::{BindTcp, DefaultOrigDstAddr, NoOrigDstAddr, OrigDstAddr},
+    listen::{BindTcp, DefaultOrigDstAddr, GetOrigDstAddr, NoOrigDstAddr},
 };
+use linkerd_stack::Param;
+use std::{
+    fmt,
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
+    time::Duration,
+};
+use tokio::{io, net::TcpStream};
+
+/// A target types representing an accepted connections.
+#[derive(Copy, Clone, Debug)]
+pub struct AcceptAddrs {
+    pub local: LocalAddr,
+    pub client: ClientAddr,
+    pub orig_dst: Option<OrigDstAddr>,
+}
+
+/// The address of a remote client.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ClientAddr(pub SocketAddr);
+
+/// The address for a listener to bind on.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ListenAddr(pub SocketAddr);
+
+/// The address of a local server.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct LocalAddr(pub SocketAddr);
+
+/// An SO_ORIGINAL_DST address.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct OrigDstAddr(pub SocketAddr);
+
+#[derive(Copy, Clone, Debug)]
+pub struct Keepalive(pub Option<Duration>);
+
+// === impl Addrs ===
+
+impl AcceptAddrs {
+    pub fn target_addr(&self) -> SocketAddr {
+        if let Some(OrigDstAddr(a)) = self.orig_dst {
+            return a;
+        }
+
+        let LocalAddr(a) = self.local;
+        a
+    }
+}
+
+impl Param<ClientAddr> for AcceptAddrs {
+    fn param(&self) -> ClientAddr {
+        self.client
+    }
+}
+
+impl Param<LocalAddr> for AcceptAddrs {
+    fn param(&self) -> LocalAddr {
+        self.local
+    }
+}
+
+impl Param<Option<OrigDstAddr>> for AcceptAddrs {
+    fn param(&self) -> Option<OrigDstAddr> {
+        self.orig_dst
+    }
+}
+
+// === impl ClientAddr ===
+
+impl Into<SocketAddr> for ClientAddr {
+    fn into(self) -> SocketAddr {
+        self.0
+    }
+}
+
+impl ClientAddr {
+    pub fn ip(&self) -> IpAddr {
+        self.0.ip()
+    }
+
+    pub fn port(&self) -> u16 {
+        self.0.port()
+    }
+}
+
+impl fmt::Display for ClientAddr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+// === impl ListenAddr ===
+
+impl Into<SocketAddr> for ListenAddr {
+    fn into(self) -> SocketAddr {
+        self.0
+    }
+}
+
+impl ToSocketAddrs for ListenAddr {
+    type Iter = std::option::IntoIter<SocketAddr>;
+
+    fn to_socket_addrs(&self) -> io::Result<Self::Iter> {
+        Ok(Some(self.0).into_iter())
+    }
+}
+
+impl ListenAddr {
+    pub fn ip(&self) -> IpAddr {
+        self.0.ip()
+    }
+
+    pub fn port(&self) -> u16 {
+        self.0.port()
+    }
+}
+
+impl fmt::Display for ListenAddr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+// === impl LocalAddr ===
+
+impl Into<SocketAddr> for LocalAddr {
+    fn into(self) -> SocketAddr {
+        self.0
+    }
+}
+
+impl LocalAddr {
+    pub fn ip(&self) -> IpAddr {
+        self.0.ip()
+    }
+
+    pub fn port(&self) -> u16 {
+        self.0.port()
+    }
+}
+
+impl fmt::Display for LocalAddr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+// === impl OrigDstAddr ===
+
+impl Into<SocketAddr> for OrigDstAddr {
+    fn into(self) -> SocketAddr {
+        self.0
+    }
+}
+
+impl OrigDstAddr {
+    pub fn ip(&self) -> IpAddr {
+        self.0.ip()
+    }
+
+    pub fn port(&self) -> u16 {
+        self.0.port()
+    }
+}
+
+impl fmt::Display for OrigDstAddr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+// === impl Keepalive ===
+
+impl Into<Option<Duration>> for Keepalive {
+    fn into(self) -> Option<Duration> {
+        self.0
+    }
+}
 
 // Misc.
 
