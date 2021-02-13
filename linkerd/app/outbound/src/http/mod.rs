@@ -15,6 +15,7 @@ use linkerd_app_core::{
     proxy::{api_resolve::ProtocolHint, tap},
     svc::stack::Param,
     tls,
+    transport::OrigDstAddr,
     transport_header::SessionProtocol,
     Conditional,
 };
@@ -71,8 +72,9 @@ impl Param<normalize_uri::DefaultAuthority> for Logical {
     fn param(&self) -> normalize_uri::DefaultAuthority {
         if let Some(p) = self.profile.as_ref() {
             if let Some(n) = p.borrow().name.as_ref() {
+                let OrigDstAddr(addr) = self.orig_dst;
                 return normalize_uri::DefaultAuthority(Some(
-                    uri::Authority::from_str(&format!("{}:{}", n, self.orig_dst.port()))
+                    uri::Authority::from_str(&format!("{}:{}", n, addr.port()))
                         .expect("Address must be a valid authority"),
                 ));
             }

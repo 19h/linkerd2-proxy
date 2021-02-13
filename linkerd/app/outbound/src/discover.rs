@@ -1,7 +1,7 @@
 use crate::{tcp, Outbound};
 use linkerd_app_core::{
     discovery_rejected, io, profiles, svc,
-    transport::{metrics::SensorIo, AcceptAddrs},
+    transport::{metrics::SensorIo, OrigDstAddr, ProxyAddrs},
     Error, IpMatch,
 };
 
@@ -14,7 +14,7 @@ impl<N> Outbound<N> {
         profiles: P,
     ) -> Outbound<
         impl svc::NewService<
-            AcceptAddrs,
+            ProxyAddrs,
             Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send> + Clone,
         >,
     >
@@ -59,7 +59,7 @@ impl<N> Outbound<N> {
             .push_cache(config.proxy.cache_max_idle_age)
             .check_new_service::<tcp::Accept, I>()
             .push_map_target(tcp::Accept::from)
-            .check_new_service::<AcceptAddrs, I>();
+            .check_new_service::<ProxyAddrs, I>();
 
         Outbound {
             config,
@@ -78,8 +78,9 @@ impl svc::stack::Predicate<tcp::Accept> for AllowProfile {
     type Request = profiles::LogicalAddr;
 
     fn check(&mut self, a: tcp::Accept) -> Result<profiles::LogicalAddr, Error> {
-        if self.0.matches(a.orig_dst.ip()) {
-            Ok(profiles::LogicalAddr(a.orig_dst.into()))
+        let OrigDstAddr(addr) = a.orig_dst;
+        if self.0.matches(addr.ip()) {
+            Ok(profiles::LogicalAddr(addr.into()))
         } else {
             Err(discovery_rejected().into())
         }

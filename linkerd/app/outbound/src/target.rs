@@ -5,7 +5,9 @@ use linkerd_app_core::{
         resolve::map_endpoint::MapEndpoint,
     },
     svc::{self, stack::Param},
-    tls, transport, transport_header, Addr, Conditional, Error,
+    tls,
+    transport::{self, OrigDstAddr},
+    transport_header, Addr, Conditional, Error,
 };
 use std::net::SocketAddr;
 
@@ -14,13 +16,13 @@ pub struct EndpointFromMetadata;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Accept<P> {
-    pub orig_dst: SocketAddr,
+    pub orig_dst: OrigDstAddr,
     pub protocol: P,
 }
 
 #[derive(Clone)]
 pub struct Logical<P> {
-    pub orig_dst: SocketAddr,
+    pub orig_dst: OrigDstAddr,
     pub profile: Option<profiles::Receiver>,
     pub protocol: P,
 }
@@ -42,22 +44,26 @@ pub struct Endpoint<P> {
 
 // === impl Accept ===
 
-impl<P> Param<SocketAddr> for Accept<P> {
-    fn param(&self) -> SocketAddr {
+impl<P> Param<OrigDstAddr> for Accept<P> {
+    fn param(&self) -> OrigDstAddr {
         self.orig_dst
     }
 }
 
-impl<P> Param<Addr> for Accept<P> {
-    fn param(&self) -> Addr {
-        self.orig_dst.into()
-    }
-}
+// impl<P> Param<Addr> for Accept<P> {
+//     fn param(&self) -> Addr {
+//         self.orig_dst.into()
+//     }
+// }
 
 impl<P> Param<transport::labels::Key> for Accept<P> {
     fn param(&self) -> transport::labels::Key {
         const NO_TLS: tls::ConditionalServerTls = Conditional::None(tls::NoServerTls::Loopback);
-        transport::labels::Key::accept(transport::labels::Direction::Out, NO_TLS, self.orig_dst)
+        transport::labels::Key::accept(
+            transport::labels::Direction::Out,
+            NO_TLS,
+            self.orig_dst.into(),
+        )
     }
 }
 
@@ -88,8 +94,8 @@ impl<P> Param<Option<profiles::Receiver>> for Logical<P> {
 }
 
 /// Used to determine whether detection should be skipped.
-impl<P> Param<SocketAddr> for Logical<P> {
-    fn param(&self) -> SocketAddr {
+impl<P> Param<OrigDstAddr> for Logical<P> {
+    fn param(&self) -> OrigDstAddr {
         self.orig_dst
     }
 }
@@ -103,11 +109,12 @@ impl<P> Param<profiles::LogicalAddr> for Logical<P> {
 
 impl<P> Logical<P> {
     pub fn addr(&self) -> Addr {
+        let OrigDstAddr(orig_dst) = self.orig_dst;
         self.profile
             .as_ref()
             .and_then(|p| p.borrow().name.clone())
-            .map(|n| Addr::from((n, self.orig_dst.port())))
-            .unwrap_or_else(|| self.orig_dst.into())
+            .map(|n| Addr::from((n, orig_dst.port())))
+            .unwrap_or_else(|| orig_dst.into())
     }
 }
 
@@ -187,14 +194,14 @@ impl<P> Param<ConcreteAddr> for Concrete<P> {
 impl<P> Endpoint<P> {
     pub fn from_logical(reason: tls::NoClientTls) -> impl (Fn(Logical<P>) -> Self) + Clone {
         move |logical| {
-            let target_addr = logical.orig_dst;
+            let OrigDstAddr(target_addr) = logical.orig_dst;
             match logical
                 .profile
                 .as_ref()
                 .and_then(|p| p.borrow().endpoint.clone())
             {
                 None => Self {
-                    addr: logical.param(),
+                    addr: target_addr,
                     metadata: Metadata::default(),
                     tls: Conditional::None(reason),
                     logical,
@@ -310,7 +317,7 @@ impl<P: Clone + std::fmt::Debug> MapEndpoint<Concrete<P>, Metadata> for Endpoint
             tls: Self::client_tls(&metadata),
             metadata,
             logical: concrete.logical.clone(),
-            target_addr: concrete.logical.orig_dst,
+            target_addr: concrete.logical.orig_dst.into(),
         }
     }
 }

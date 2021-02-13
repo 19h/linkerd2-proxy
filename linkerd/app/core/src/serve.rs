@@ -1,27 +1,30 @@
-use crate::io;
-use crate::svc;
+use crate::{
+    io,
+    svc::{self, stack::Param},
+    transport::{ClientAddr, Remote},
+};
 use futures::prelude::*;
 use linkerd_error::Error;
-use linkerd_proxy_transport::AcceptAddrs;
 use tower::util::ServiceExt;
 use tracing::instrument::Instrument;
-use tracing::{debug, info, info_span, warn};
+use tracing::{debug, debug_span, info, warn};
 
 /// Spawns a task that binds an `L`-typed listener with an `A`-typed
 /// connection-accepting service.
 ///
 /// The task is driven until shutdown is signaled.
-pub async fn serve<M, A, I>(
-    listen: impl Stream<Item = std::io::Result<(AcceptAddrs, I)>>,
-    mut new_accept: M,
+pub async fn serve<N, NSvc, T, I>(
+    listen: impl Stream<Item = std::io::Result<(T, I)>>,
+    mut new_accept: N,
     shutdown: impl Future,
 ) -> Result<(), Error>
 where
+    T: Param<Remote<ClientAddr>>,
     I: Send + 'static,
-    M: svc::NewService<AcceptAddrs, Service = A>,
-    A: tower::Service<io::ScopedIo<I>, Response = ()> + Send + 'static,
-    A::Error: Into<Error>,
-    A::Future: Send + 'static,
+    N: svc::NewService<T, Service = NSvc>,
+    NSvc: tower::Service<io::ScopedIo<I>, Response = ()> + Send + 'static,
+    NSvc::Error: Into<Error>,
+    NSvc::Future: Send + 'static,
 {
     let accept = async move {
         futures::pin_mut!(listen);
@@ -30,16 +33,12 @@ where
                 None => return Ok(()),
                 Some(conn) => {
                     // If the listener returned an error, complete the task.
-                    let (addrs, io) = conn?;
+                    let (target, io) = conn?;
 
                     // The local addr should be instrumented from the listener's context.
-                    let span = info_span!(
-                        "accept",
-                        client.addr = %addrs.client,
-                        target.addr = %addrs.target_addr(),
-                    );
+                    let span = debug_span!("accept", client.addr = %target.param());
 
-                    let accept = new_accept.new_service(addrs);
+                    let accept = new_accept.new_service(target);
 
                     // Dispatch all of the work for a given connection onto a connection-specific task.
                     tokio::spawn(

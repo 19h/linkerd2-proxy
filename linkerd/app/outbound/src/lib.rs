@@ -15,14 +15,14 @@ pub mod tcp;
 pub(crate) mod test_util;
 
 use linkerd_app_core::{
-    config::ProxyConfig,
+    config::{ProxyConfig, ServerConfig},
     io, metrics, profiles,
     proxy::{api_resolve::Metadata, core::Resolve},
     serve, svc, tls,
-    transport::{AcceptAddrs, BindTcp, GetOrigDstAddr},
+    transport::{Bind, Local, ProxyAddrs, ServerAddr},
     AddrMatch, Error, ProxyRuntime,
 };
-use std::{collections::HashMap, future::Future, net::SocketAddr, time::Duration};
+use std::{collections::HashMap, fmt, future::Future, time::Duration};
 use tracing::info;
 
 const EWMA_DEFAULT_RTT: Duration = Duration::from_millis(30);
@@ -94,7 +94,7 @@ impl<S> Outbound<S> {
         resolve: R,
         profiles: P,
     ) -> impl svc::NewService<
-        AcceptAddrs,
+        ProxyAddrs,
         Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send>,
     >
     where
@@ -119,7 +119,7 @@ impl<S> Outbound<S> {
         P: profiles::GetProfile<profiles::LogicalAddr> + Clone + Send + 'static,
         P::Future: Send,
         P::Error: Send,
-        I: io::AsyncRead + io::AsyncWrite + io::PeerAddr + std::fmt::Debug + Send + Unpin + 'static,
+        I: io::AsyncRead + io::AsyncWrite + io::PeerAddr + fmt::Debug + Send + Unpin + 'static,
     {
         let http = self
             .clone()
@@ -138,12 +138,12 @@ impl<S> Outbound<S> {
 }
 
 impl Outbound<()> {
-    pub fn serve<P, R, O>(
+    pub fn serve<P, R, B>(
         self,
         profiles: P,
         resolve: R,
-        orig_dst: O,
-    ) -> (SocketAddr, impl Future<Output = ()>)
+        bind: B,
+    ) -> (Local<ServerAddr>, impl Future<Output = ()>)
     where
         R: Resolve<http::Concrete, Endpoint = Metadata, Error = Error>,
         <R as Resolve<http::Concrete>>::Resolution: Send,
@@ -155,9 +155,10 @@ impl Outbound<()> {
         P: profiles::GetProfile<profiles::LogicalAddr> + Clone + Send + Sync + Unpin + 'static,
         P::Future: Send,
         P::Error: Send,
-        O: GetOrigDstAddr,
+        B: Bind<ServerConfig, Addrs = ProxyAddrs>,
+        B::Io: io::AsyncRead + io::AsyncWrite + io::PeerAddr + fmt::Debug + Send + Unpin + 'static,
     {
-        let (listen_addr, listen) = BindTcp::new(orig_dst)
+        let (listen_addr, listen) = bind
             .bind(self.config.proxy.server.clone())
             .expect("Failed to bind outbound listener");
 

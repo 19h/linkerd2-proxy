@@ -3,7 +3,7 @@ use linkerd_app_core::{
     config::{ProxyConfig, ServerConfig},
     detect, discovery_rejected, drain, errors, http_request_l5d_override_dst_addr, http_tracing,
     io, profiles, svc, tls,
-    transport::{self, AcceptAddrs},
+    transport::{self, ProxyAddrs},
     Addr, AddrMatch, Error,
 };
 use tracing::{debug_span, info_span};
@@ -21,7 +21,7 @@ impl Outbound<()> {
         tcp: T,
         http: H,
     ) -> impl svc::NewService<
-        AcceptAddrs,
+        ProxyAddrs,
         Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send>,
     >
     where
@@ -132,7 +132,7 @@ impl Outbound<()> {
             .check_new_service::<tcp::Accept, transport::metrics::SensorIo<I>>()
             .push(self.runtime.metrics.transport.layer_accept())
             .push_map_target(tcp::Accept::from)
-            .check_new_service::<AcceptAddrs, I>()
+            .check_new_service::<ProxyAddrs, I>()
             // Boxing is necessary purely to limit the link-time overhead of
             // having enormous types.
             .push(svc::BoxNewService::layer())
@@ -192,7 +192,8 @@ impl<B> svc::stack::RecognizeRoute<http::Request<B>> for TargetPerRequest {
     fn recognize(&self, req: &http::Request<B>) -> Result<Self::Key, Error> {
         Ok(Target {
             accept: self.0,
-            dst: http_request_l5d_override_dst_addr(req).unwrap_or_else(|_| self.0.orig_dst.into()),
+            dst: http_request_l5d_override_dst_addr(req)
+                .unwrap_or_else(|_| Addr::Socket(self.0.orig_dst.into())),
         })
     }
 }

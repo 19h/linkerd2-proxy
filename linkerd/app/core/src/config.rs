@@ -2,7 +2,7 @@ pub use crate::{
     exp_backoff::ExponentialBackoff,
     proxy::http::{h1, h2},
     svc::stack::Param,
-    transport::{BindTcp, DefaultOrigDstAddr, Keepalive, ListenAddr},
+    transport::{DefaultOrigDstAddr, Keepalive, ListenAddr},
 };
 use std::time::Duration;
 

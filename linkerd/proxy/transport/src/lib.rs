@@ -9,53 +9,13 @@ mod orig_dst;
 pub use self::{
     addrs::{ClientAddr, ListenAddr, Local, OrigDstAddr, Remote, ServerAddr},
     connect::{ConnectAddr, ConnectTcp},
-    listen::BindTcp,
-    orig_dst::{DefaultOrigDstAddr, GetOrigDstAddr, NoOrigDstAddr},
+    listen::{bind_tcp, Bind, BindTcp},
+    orig_dst::{DefaultOrigDstAddr, GetOrigDstAddr},
 };
-use linkerd_stack::Param;
-use std::{net::SocketAddr, time::Duration};
+use std::time::Duration;
 use tokio::net::TcpStream;
-
-/// A target types representing an accepted connections.
-#[derive(Copy, Clone, Debug)]
-pub struct AcceptAddrs {
-    pub local: Local<ServerAddr>,
-    pub client: Remote<ClientAddr>,
-    pub orig_dst: Option<OrigDstAddr>,
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct Keepalive(pub Option<Duration>);
-
-// === impl AcceptAddrs ===
-
-impl AcceptAddrs {
-    pub fn target_addr(&self) -> SocketAddr {
-        if let Some(OrigDstAddr(a)) = self.orig_dst {
-            return a;
-        }
-
-        self.local.into()
-    }
-}
-
-impl Param<Remote<ClientAddr>> for AcceptAddrs {
-    fn param(&self) -> Remote<ClientAddr> {
-        self.client
-    }
-}
-
-impl Param<Local<ServerAddr>> for AcceptAddrs {
-    fn param(&self) -> Local<ServerAddr> {
-        self.local
-    }
-}
-
-impl Param<Option<OrigDstAddr>> for AcceptAddrs {
-    fn param(&self) -> Option<OrigDstAddr> {
-        self.orig_dst
-    }
-}
 
 // === impl Keepalive ===
 

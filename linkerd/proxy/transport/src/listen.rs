@@ -1,82 +1,102 @@
-use crate::{
-    orig_dst::{GetOrigDstAddr, NoOrigDstAddr},
-    AcceptAddrs, ClientAddr, Keepalive, ListenAddr, Local, Remote, ServerAddr,
-};
+use crate::{ClientAddr, Keepalive, ListenAddr, Local, Remote, ServerAddr};
 use futures::prelude::*;
 use linkerd_stack::Param;
-use std::{io, net::SocketAddr, time::Duration};
+use std::{io, pin::Pin, time::Duration};
 use tokio::net::TcpStream;
 use tokio_stream::wrappers::TcpListenerStream;
 use tracing::trace;
 
-#[derive(Clone, Debug)]
-pub struct BindTcp<O> {
-    orig_dst_addr: O,
+pub trait Bind<T> {
+    type Addrs;
+    type Io;
+    type Accept: Stream<Item = io::Result<(Self::Addrs, Self::Io)>>;
+
+    fn bind(&self, config: T) -> io::Result<(Local<ServerAddr>, Self::Accept)>;
 }
 
-pub type Connection = (AcceptAddrs, TcpStream);
+impl<F, C, T, I, A> Bind<C> for F
+where
+    F: Fn(C) -> io::Result<(Local<ServerAddr>, A)>,
+    A: Stream<Item = io::Result<(T, I)>>,
+{
+    type Addrs = T;
+    type Io = I;
+    type Accept = A;
 
-impl Default for BindTcp<NoOrigDstAddr> {
-    fn default() -> Self {
-        Self::new(NoOrigDstAddr(()))
+    fn bind(&self, config: C) -> io::Result<(Local<ServerAddr>, A)> {
+        (self)(config)
     }
 }
 
-impl<O: GetOrigDstAddr> BindTcp<O> {
-    pub fn new(orig_dst_addr: O) -> Self {
-        Self { orig_dst_addr }
+pub struct BindTcp;
+
+pub struct AcceptAddrs {
+    pub client: Remote<ClientAddr>,
+    pub server: Local<ServerAddr>,
+}
+
+impl<T> Bind<T> for BindTcp
+where
+    T: Param<ListenAddr> + Param<Keepalive> + 'static,
+{
+    type Addrs = AcceptAddrs;
+    type Io = TcpStream;
+    type Accept = Pin<Box<dyn Stream<Item = io::Result<(AcceptAddrs, Self::Io)>> + Send + 'static>>;
+
+    fn bind(&self, config: T) -> io::Result<(Local<ServerAddr>, Self::Accept)> {
+        let (addr, accept) = bind_tcp(config)?;
+        Ok((addr, Box::pin(accept)))
     }
+}
 
-    pub fn bind<T>(
-        &self,
-        config: T,
-    ) -> io::Result<(SocketAddr, impl Stream<Item = io::Result<Connection>>)>
-    where
-        T: Param<ListenAddr> + Param<Keepalive>,
-    {
-        let ListenAddr(bind_addr) = config.param();
-        let Keepalive(keepalive) = config.param();
-        let get_orig = self.orig_dst_addr.clone();
+pub fn bind_tcp<T>(
+    config: T,
+) -> io::Result<(
+    Local<ServerAddr>,
+    impl Stream<Item = io::Result<(AcceptAddrs, TcpStream)>> + Send,
+)>
+where
+    T: Param<ListenAddr> + Param<Keepalive>,
+{
+    let ListenAddr(bind_addr) = config.param();
+    let Keepalive(keepalive) = config.param();
 
-        let listen = {
-            let l = std::net::TcpListener::bind(bind_addr)?;
-            // Ensure that O_NONBLOCK is set on the socket before using it with Tokio.
-            l.set_nonblocking(true)?;
-            tokio::net::TcpListener::from_std(l).expect("Listener must be valid")
-        };
-        let addr = listen.local_addr()?;
+    let listen = {
+        let l = std::net::TcpListener::bind(bind_addr)?;
+        // Ensure that O_NONBLOCK is set on the socket before using it with Tokio.
+        l.set_nonblocking(true)?;
+        tokio::net::TcpListener::from_std(l).expect("Listener must be valid")
+    };
+    let addr = Local(ServerAddr(listen.local_addr()?));
 
-        let accept = TcpListenerStream::new(listen)
-            .and_then(move |tcp| future::ready(Self::accept(tcp, keepalive, get_orig.clone())));
+    let accept =
+        TcpListenerStream::new(listen).and_then(move |tcp| future::ready(accept(tcp, keepalive)));
 
-        Ok((addr, accept))
+    Ok((addr, accept))
+}
+
+fn accept(tcp: TcpStream, keepalive: Option<Duration>) -> io::Result<(AcceptAddrs, TcpStream)> {
+    let addrs = {
+        let client = Remote(ClientAddr(tcp.peer_addr()?));
+        let server = Local(ServerAddr(tcp.local_addr()?));
+        trace!(client.addr = %client, server.addr = %server, "Accepted");
+        AcceptAddrs { client, server }
+    };
+
+    super::set_nodelay_or_warn(&tcp);
+    super::set_keepalive_or_warn(&tcp, keepalive);
+
+    Ok((addrs, tcp))
+}
+
+impl Param<Remote<ClientAddr>> for AcceptAddrs {
+    fn param(&self) -> Remote<ClientAddr> {
+        self.client
     }
+}
 
-    fn accept(
-        tcp: TcpStream,
-        keepalive: Option<Duration>,
-        get_orig: O,
-    ) -> io::Result<(AcceptAddrs, TcpStream)> {
-        let addrs = {
-            let local = Local(ServerAddr(tcp.local_addr()?));
-            let client = Remote(ClientAddr(tcp.peer_addr()?));
-            let orig_dst = get_orig.orig_dst_addr(&tcp);
-            trace!(
-                local.addr = %local,
-                client.addr = %client,
-                orig.addr = ?orig_dst,
-                "Accepted",
-            );
-            AcceptAddrs {
-                local,
-                client,
-                orig_dst,
-            }
-        };
-
-        super::set_nodelay_or_warn(&tcp);
-        super::set_keepalive_or_warn(&tcp, keepalive);
-
-        Ok((addrs, tcp))
+impl Param<Local<ServerAddr>> for AcceptAddrs {
+    fn param(&self) -> Local<ServerAddr> {
+        self.server
     }
 }

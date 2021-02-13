@@ -4,11 +4,11 @@ use linkerd_app_core::{
     proxy::identity::LocalCrtKey,
     svc::{self, stack::Param},
     tls,
-    transport::{self, metrics::SensorIo, AcceptAddrs},
+    transport::{self, metrics::SensorIo, ClientAddr, Local, ProxyAddrs, Remote, ServerAddr},
     transport_header::{self, NewTransportHeaderServer, SessionProtocol, TransportHeader},
     Conditional, Error, NameAddr, Never,
 };
-use std::{convert::TryFrom, fmt::Debug, net::SocketAddr};
+use std::{convert::TryFrom, fmt::Debug};
 use tracing::debug_span;
 
 #[derive(Clone, Debug)]
@@ -45,8 +45,8 @@ pub struct GatewayTransportHeader {
 pub struct ClientInfo {
     pub client_id: tls::ClientId,
     pub alpn: Option<tls::NegotiatedProtocol>,
-    pub client_addr: SocketAddr,
-    pub local_addr: SocketAddr,
+    pub client_addr: Remote<ClientAddr>,
+    pub local_addr: Local<ServerAddr>,
 }
 
 type FwdIo<I> = io::PrefixedIo<SensorIo<tls::server::Io<I>>>;
@@ -66,7 +66,7 @@ impl<T> Inbound<T> {
         gateway: G,
     ) -> Inbound<
         impl svc::NewService<
-                AcceptAddrs,
+                ProxyAddrs,
                 Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send>,
             > + Clone,
     >
@@ -77,12 +77,8 @@ impl<T> Inbound<T> {
         TSvc: svc::Service<FwdIo<I>, Response = ()> + Clone + Send + Sync + Unpin + 'static,
         TSvc::Error: Into<Error>,
         TSvc::Future: Send + Unpin,
-        G: svc::NewService<GatewayConnection, Service = GSvc>
-            + Clone
-            + Send
-            + Sync
-            + Unpin
-            + 'static,
+        G: Clone + Send + Sync + Unpin + 'static,
+        G: svc::NewService<GatewayConnection, Service = GSvc>,
         GSvc: svc::Service<GatewayIo<I>, Response = ()> + Send + 'static,
         GSvc::Error: Into<Error>,
         GSvc::Future: Send,
@@ -164,7 +160,7 @@ impl<T> Inbound<T> {
                 rt.identity.clone().map(WithTransportHeaderAlpn),
                 detect_timeout,
             ))
-            .check_new_service::<AcceptAddrs, I>();
+            .check_new_service::<ProxyAddrs, I>();
 
         Inbound {
             config,
@@ -176,11 +172,11 @@ impl<T> Inbound<T> {
 
 // === impl ClientInfo ===
 
-impl TryFrom<(tls::ConditionalServerTls, AcceptAddrs)> for ClientInfo {
+impl TryFrom<(tls::ConditionalServerTls, ProxyAddrs)> for ClientInfo {
     type Error = RefusedNoIdentity;
 
     fn try_from(
-        (tls, addrs): (tls::ConditionalServerTls, AcceptAddrs),
+        (tls, addrs): (tls::ConditionalServerTls, ProxyAddrs),
     ) -> Result<Self, Self::Error> {
         match tls {
             Conditional::Some(tls::ServerTls::Established {
@@ -189,8 +185,8 @@ impl TryFrom<(tls::ConditionalServerTls, AcceptAddrs)> for ClientInfo {
             }) => Ok(Self {
                 client_id,
                 alpn: negotiated_protocol,
-                client_addr: addrs.client.into(),
-                local_addr: addrs.target_addr(),
+                client_addr: addrs.client,
+                local_addr: addrs.server,
             }),
             _ => Err(RefusedNoIdentity(())),
         }
@@ -214,7 +210,7 @@ impl Param<transport::labels::Key> for ClientInfo {
                 client_id: Some(self.client_id.clone()),
                 negotiated_protocol: self.alpn.clone(),
             }),
-            self.local_addr,
+            self.local_addr.into(),
         )
     }
 }

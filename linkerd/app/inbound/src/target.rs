@@ -6,7 +6,7 @@ use linkerd_app_core::{
     stack_tracing,
     svc::{self, stack::Param},
     tls,
-    transport::{self, AcceptAddrs, ClientAddr, Remote},
+    transport::{self, ClientAddr, OrigDstAddr, ProxyAddrs, Remote},
     transport_header::TransportHeader,
     Addr, Conditional, Error, CANONICAL_DST_HEADER, DST_OVERRIDE_HEADER,
 };
@@ -15,7 +15,7 @@ use tracing::debug;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TcpAccept {
-    pub target_addr: SocketAddr,
+    pub target_addr: OrigDstAddr,
     pub client_addr: Remote<ClientAddr>,
     pub tls: tls::ConditionalServerTls,
 }
@@ -29,7 +29,7 @@ pub struct HttpAccept {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Target {
     pub dst: Addr,
-    pub target_addr: SocketAddr,
+    pub target_addr: OrigDstAddr,
     pub http_version: http::Version,
     pub tls: tls::ConditionalServerTls,
 }
@@ -60,27 +60,27 @@ pub struct RequestTarget {
 // === impl TcpAccept ===
 
 impl TcpAccept {
-    pub fn port_skipped(tcp: AcceptAddrs) -> Self {
+    pub fn port_skipped(tcp: ProxyAddrs) -> Self {
         Self {
-            target_addr: tcp.target_addr(),
+            target_addr: tcp.orig_dst,
             client_addr: tcp.client,
             tls: Conditional::None(tls::NoServerTls::PortSkipped),
         }
     }
 }
 
-impl From<tls::server::Meta<AcceptAddrs>> for TcpAccept {
-    fn from((tls, addrs): tls::server::Meta<AcceptAddrs>) -> Self {
+impl From<tls::server::Meta<ProxyAddrs>> for TcpAccept {
+    fn from((tls, addrs): tls::server::Meta<ProxyAddrs>) -> Self {
         Self {
-            target_addr: addrs.target_addr(),
+            target_addr: addrs.orig_dst,
             client_addr: addrs.client,
             tls,
         }
     }
 }
 
-impl Param<SocketAddr> for TcpAccept {
-    fn param(&self) -> SocketAddr {
+impl Param<OrigDstAddr> for TcpAccept {
+    fn param(&self) -> OrigDstAddr {
         self.target_addr
     }
 }
@@ -90,7 +90,7 @@ impl Param<transport::labels::Key> for TcpAccept {
         transport::labels::Key::accept(
             transport::labels::Direction::In,
             self.tls.clone(),
-            self.target_addr,
+            self.target_addr.into(),
         )
     }
 }
@@ -129,7 +129,7 @@ impl Param<http::client::Settings> for HttpEndpoint {
 impl From<Target> for HttpEndpoint {
     fn from(target: Target) -> Self {
         Self {
-            port: target.target_addr.port(),
+            port: target.target_addr.as_ref().port(),
             settings: target.http_version.into(),
             tls: target.tls,
         }
@@ -141,7 +141,7 @@ impl From<Target> for HttpEndpoint {
 impl From<TcpAccept> for TcpEndpoint {
     fn from(tcp: TcpAccept) -> Self {
         Self {
-            port: tcp.target_addr.port(),
+            port: tcp.target_addr.as_ref().port(),
         }
     }
 }
@@ -193,7 +193,7 @@ pub(super) fn route((route, logical): (profiles::http::Route, Logical)) -> dst::
 impl From<HttpAccept> for Target {
     fn from(HttpAccept { version, tcp }: HttpAccept) -> Self {
         Self {
-            dst: tcp.target_addr.into(),
+            dst: Addr::Socket(tcp.target_addr.into()),
             target_addr: tcp.target_addr,
             http_version: version,
             tls: tcp.tls,
@@ -224,7 +224,7 @@ impl Param<metrics::EndpointLabels> for Target {
         metrics::InboundEndpointLabels {
             tls: self.tls.clone(),
             authority: self.dst.name_addr().map(|d| d.as_http_authority()),
-            target_addr: self.target_addr,
+            target_addr: self.target_addr.into(),
         }
         .into()
     }
@@ -253,7 +253,7 @@ impl tap::Inspect for Target {
     }
 
     fn dst_addr<B>(&self, _: &http::Request<B>) -> Option<SocketAddr> {
-        Some(self.target_addr)
+        Some(self.target_addr.into())
     }
 
     fn dst_labels<B>(&self, _: &http::Request<B>) -> Option<&IndexMap<String, String>> {
@@ -325,7 +325,7 @@ impl<A> svc::stack::RecognizeRoute<http::Request<A>> for RequestTarget {
             })
             .or_else(|| http_request_authority_addr(req).ok())
             .or_else(|| http_request_host_addr(req).ok())
-            .unwrap_or_else(|| self.accept.tcp.target_addr.into());
+            .unwrap_or_else(|| Addr::Socket(self.accept.tcp.target_addr.into()));
 
         Ok(Target {
             dst,

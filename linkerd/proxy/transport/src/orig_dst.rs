@@ -1,9 +1,9 @@
 use crate::OrigDstAddr;
-use tokio::net::TcpStream;
+use std::io;
 
 /// A mockable source for address info, i.e., for tests.
-pub trait GetOrigDstAddr: Clone {
-    fn orig_dst_addr(&self, socket: &TcpStream) -> Option<OrigDstAddr>;
+pub trait GetOrigDstAddr<I>: Clone {
+    fn orig_dst_addr(&self, socket: &I) -> io::Result<OrigDstAddr>;
 }
 
 // The mock-orig-dst feature disables use of the syscall-based GetOrigDstAddr implementation and
@@ -15,35 +15,40 @@ pub use self::sys::SysOrigDstAddr as DefaultOrigDstAddr;
 #[cfg(feature = "mock-orig-dst")]
 pub use self::mock::MockOrigDstAddr as DefaultOrigDstAddr;
 
-#[derive(Copy, Clone, Debug)]
-pub struct NoOrigDstAddr(pub(crate) ());
-
-impl GetOrigDstAddr for NoOrigDstAddr {
-    fn orig_dst_addr(&self, _: &TcpStream) -> Option<OrigDstAddr> {
-        None
+impl<F, I> GetOrigDstAddr<I> for F
+where
+    F: Clone + Fn(&I) -> io::Result<OrigDstAddr>,
+{
+    fn orig_dst_addr(&self, socket: &I) -> io::Result<OrigDstAddr> {
+        (self)(socket)
     }
 }
 
 #[cfg(not(feature = "mock-orig-dst"))]
 mod sys {
-    use super::{GetOrigDstAddr, SocketAddr, TcpStream};
+    use super::{GetOrigDstAddr, OrigDstAddr};
+    use std::io;
+    use tokio::net::TcpStream;
 
     #[derive(Copy, Clone, Debug, Default)]
     pub struct SysOrigDstAddr(());
 
-    impl GetOrigDstAddr for SysOrigDstAddr {
+    impl GetOrigDstAddr<TcpStream> for SysOrigDstAddr {
         #[cfg(target_os = "linux")]
-        fn orig_dst_addr(&self, sock: &TcpStream) -> Option<OrigDstAddr> {
+        fn orig_dst_addr(&self, sock: &TcpStream) -> io::Result<OrigDstAddr> {
             use std::os::unix::io::AsRawFd;
 
             let fd = sock.as_raw_fd();
             let r = unsafe { linux::so_original_dst(fd) };
-            r.ok().map(OrigDstAddr)
+            r.map(OrigDstAddr)
         }
 
         #[cfg(not(target_os = "linux"))]
-        fn orig_dst_addr(&self, _sock: &TcpStream) -> Option<OrigDstAddr> {
-            None
+        fn orig_dst_addr(&self, _sock: &TcpStream) -> io::Result<OrigDstAddr> {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Platform does not support SO_ORIGINAL_DST",
+            ))
         }
     }
 
@@ -150,8 +155,7 @@ mod sys {
 mod mock {
     use super::GetOrigDstAddr;
     use crate::OrigDstAddr;
-    use std::net::SocketAddr;
-    use tokio::net::TcpStream;
+    use std::{io, net::SocketAddr};
 
     #[derive(Copy, Clone, Debug)]
     pub struct MockOrigDstAddr(SocketAddr);
@@ -162,9 +166,9 @@ mod mock {
         }
     }
 
-    impl GetOrigDstAddr for MockOrigDstAddr {
-        fn orig_dst_addr(&self, _: &TcpStream) -> Option<OrigDstAddr> {
-            Some(OrigDstAddr(self.0))
+    impl<I> GetOrigDstAddr<I> for MockOrigDstAddr {
+        fn orig_dst_addr(&self, _: &I) -> io::Result<OrigDstAddr> {
+            Ok(OrigDstAddr(self.0))
         }
     }
 }

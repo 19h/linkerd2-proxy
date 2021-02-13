@@ -21,16 +21,16 @@ use self::{
     target::{HttpAccept, TcpAccept},
 };
 use linkerd_app_core::{
-    config::{ConnectConfig, ProxyConfig},
+    config::{ConnectConfig, ProxyConfig, ServerConfig},
     detect, drain, io, metrics, profiles,
     proxy::tcp,
     serve,
     svc::{self, stack::Param},
     tls,
-    transport::{self, AcceptAddrs, BindTcp, GetOrigDstAddr},
+    transport::{self, Bind, Local, ProxyAddrs, ServerAddr},
     Error, NameMatch, ProxyRuntime,
 };
-use std::{fmt::Debug, future::Future, net::SocketAddr, time::Duration};
+use std::{fmt, future::Future, time::Duration};
 use tracing::debug_span;
 
 #[derive(Clone, Debug)]
@@ -122,26 +122,33 @@ impl Inbound<()> {
         }
     }
 
-    pub fn serve<G, GSvc, P, O>(
+    pub fn serve<G, GSvc, P, B>(
         self,
         profiles: P,
         gateway: G,
-        orig_dst: O,
-    ) -> (SocketAddr, impl Future<Output = ()>)
+        bind: B,
+    ) -> (Local<ServerAddr>, impl Future<Output = ()>)
     where
         G: svc::NewService<direct::GatewayConnection, Service = GSvc>,
         G: Clone + Send + Sync + Unpin + 'static,
-        GSvc: svc::Service<direct::GatewayIo<io::ScopedIo<tokio::net::TcpStream>>, Response = ()>
-            + Send
-            + 'static,
+        GSvc: svc::Service<direct::GatewayIo<io::ScopedIo<B::Io>>, Response = ()> + Send + 'static,
         GSvc::Error: Into<Error>,
         GSvc::Future: Send,
         P: profiles::GetProfile<profiles::LogicalAddr> + Clone + Send + Sync + 'static,
         P::Error: Send,
         P::Future: Send,
-        O: GetOrigDstAddr,
+        B: Bind<ServerConfig, Addrs = ProxyAddrs>,
+        B::Io: io::AsyncRead
+            + io::AsyncWrite
+            + io::Peek
+            + io::PeerAddr
+            + fmt::Debug
+            + Send
+            + Sync
+            + Unpin
+            + 'static,
     {
-        let (listen_addr, listen) = BindTcp::new(orig_dst)
+        let (Local(ServerAddr(listen_addr)), listen) = bind
             .bind(self.config.proxy.server.clone())
             .expect("Failed to bind inbound listener");
 
@@ -149,13 +156,12 @@ impl Inbound<()> {
             let stack = self
                 .to_tcp_connect()
                 .into_server(listen_addr.port(), profiles, gateway);
-            let shutdown = self.runtime.drain.signaled();
-            serve::serve(listen, stack, shutdown)
+            serve::serve(listen, stack, self.runtime.drain.signaled())
                 .await
                 .expect("Inbound server failed");
         };
 
-        (listen_addr, serve)
+        (Local(ServerAddr(listen_addr)), serve)
     }
 }
 
@@ -176,8 +182,7 @@ where
             > + Clone,
     >
     where
-        I: io::AsyncRead + io::AsyncWrite,
-        I: Debug + Send + Sync + Unpin + 'static,
+        I: io::AsyncRead + io::AsyncWrite + fmt::Debug + Send + Sync + Unpin + 'static,
     {
         let Self {
             config,
@@ -214,12 +219,19 @@ where
         profiles: P,
         gateway: G,
     ) -> impl svc::NewService<
-        AcceptAddrs,
+        ProxyAddrs,
         Service = impl svc::Service<I, Response = (), Error = Error, Future = impl Send>,
     > + Clone
     where
-        I: io::AsyncRead + io::AsyncWrite + io::Peek + io::PeerAddr,
-        I: Debug + Send + Sync + Unpin + 'static,
+        I: io::AsyncRead
+            + io::AsyncWrite
+            + io::Peek
+            + io::PeerAddr
+            + fmt::Debug
+            + Send
+            + Sync
+            + Unpin
+            + 'static,
         G: svc::NewService<direct::GatewayConnection, Service = GSvc>,
         G: Clone + Send + Sync + Unpin + 'static,
         GSvc: svc::Service<direct::GatewayIo<I>, Response = ()> + Send + 'static,
@@ -258,7 +270,7 @@ where
                 self.runtime.identity.clone(),
                 config.detect_protocol_timeout,
             ))
-            .check_new_service::<AcceptAddrs, I>()
+            .check_new_service::<ProxyAddrs, I>()
             .push_switch(
                 disable_detect,
                 self.clone()
@@ -267,19 +279,19 @@ where
                     .push_map_target(TcpEndpoint::from)
                     .push(self.runtime.metrics.transport.layer_accept())
                     .push_map_target(TcpAccept::port_skipped)
-                    .check_new_service::<AcceptAddrs, I>()
+                    .check_new_service::<ProxyAddrs, I>()
                     .into_inner(),
             )
-            .check_new_service::<AcceptAddrs, I>()
+            .check_new_service::<ProxyAddrs, I>()
             .push_switch(
                 PreventLoop::from(server_port),
                 self.push_tcp_forward(server_port)
                     .push_direct(gateway)
                     .stack
-                    .check_new_service::<AcceptAddrs, I>()
+                    .check_new_service::<ProxyAddrs, I>()
                     .into_inner(),
             )
-            .check_new_service::<AcceptAddrs, I>()
+            .check_new_service::<ProxyAddrs, I>()
             .into_inner()
     }
 }
@@ -292,11 +304,11 @@ impl From<indexmap::IndexSet<u16>> for SkipByPort {
     }
 }
 
-impl svc::Predicate<AcceptAddrs> for SkipByPort {
-    type Request = svc::Either<AcceptAddrs, AcceptAddrs>;
+impl svc::Predicate<ProxyAddrs> for SkipByPort {
+    type Request = svc::Either<ProxyAddrs, ProxyAddrs>;
 
-    fn check(&mut self, t: AcceptAddrs) -> Result<Self::Request, Error> {
-        if !self.0.contains(&t.target_addr().port()) {
+    fn check(&mut self, t: ProxyAddrs) -> Result<Self::Request, Error> {
+        if !self.0.contains(&t.orig_dst.as_ref().port()) {
             Ok(svc::Either::A(t))
         } else {
             Ok(svc::Either::B(t))
