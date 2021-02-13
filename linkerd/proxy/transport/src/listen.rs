@@ -67,23 +67,26 @@ impl<A: GetOrigDstAddr> BindTcp<A> {
         keepalive: Option<Duration>,
         get_orig: A,
     ) -> io::Result<(AcceptAddrs, TcpStream)> {
+        let addrs = {
+            let local = Local(ServerAddr(tcp.local_addr()?));
+            let client = Remote(ClientAddr(tcp.peer_addr()?));
+            let orig_dst = get_orig.orig_dst_addr(&tcp);
+            trace!(
+                local.addr = %local,
+                client.addr = %client,
+                orig.addr = ?orig_dst,
+                "Accepted",
+            );
+            AcceptAddrs {
+                local,
+                client,
+                orig_dst,
+            }
+        };
+
         super::set_nodelay_or_warn(&tcp);
         super::set_keepalive_or_warn(&tcp, keepalive);
 
-        let local = Local(ServerAddr(tcp.local_addr()?));
-        let client = Remote(ClientAddr(tcp.peer_addr()?));
-        let orig_dst = get_orig.orig_dst_addr(&tcp);
-        trace!(
-            local.addr = %local,
-            client.addr = %client,
-            orig.addr = ?orig_dst,
-            "Accepted",
-        );
-        let addrs = AcceptAddrs {
-            local,
-            client,
-            orig_dst,
-        };
         Ok((addrs, tcp))
     }
 }
