@@ -10,7 +10,9 @@ use linkerd_conditional::Conditional;
 use linkerd_error::Never;
 use linkerd_identity as id;
 use linkerd_io::{self as io, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use linkerd_proxy_transport::{AcceptAddrs, BindTcp, ConnectAddr, ConnectTcp};
+use linkerd_proxy_transport::{
+    AcceptAddrs, BindTcp, ConnectAddr, ConnectTcp, Keepalive, ListenAddr,
+};
 use linkerd_stack::{NewService, Param};
 use linkerd_tls as tls;
 use std::future::Future;
@@ -186,7 +188,7 @@ where
             std::time::Duration::from_secs(10),
         );
 
-        let (listen_addr, listen) = BindTcp::new(addr, None).bind().expect("must bind");
+        let (listen_addr, listen) = BindTcp::default().bind(Server(addr)).expect("must bind");
         let server = async move {
             futures::pin_mut!(listen);
             let (meta, io) = listen
@@ -308,6 +310,8 @@ struct Target(SocketAddr, tls::ConditionalClientTls);
 #[derive(Clone)]
 struct Tls(id::CrtKey);
 
+struct Server(SocketAddr);
+
 impl Param<ConnectAddr> for Target {
     fn param(&self) -> ConnectAddr {
         ConnectAddr(self.0)
@@ -335,5 +339,17 @@ impl Param<tls::server::Config> for Tls {
 impl Param<tls::LocalId> for Tls {
     fn param(&self) -> tls::LocalId {
         self.0.id().clone()
+    }
+}
+
+impl Param<ListenAddr> for Server {
+    fn param(&self) -> ListenAddr {
+        ListenAddr(self.0)
+    }
+}
+
+impl Param<Keepalive> for Server {
+    fn param(&self) -> Keepalive {
+        Keepalive(None)
     }
 }

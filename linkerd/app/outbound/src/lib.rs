@@ -19,7 +19,7 @@ use linkerd_app_core::{
     io, metrics, profiles,
     proxy::{api_resolve::Metadata, core::Resolve},
     serve, svc, tls,
-    transport::AcceptAddrs,
+    transport::{AcceptAddrs, BindTcp, GetOrigDstAddr},
     AddrMatch, Error, ProxyRuntime,
 };
 use std::{collections::HashMap, future::Future, net::SocketAddr, time::Duration};
@@ -138,7 +138,12 @@ impl<S> Outbound<S> {
 }
 
 impl Outbound<()> {
-    pub fn serve<P, R>(self, profiles: P, resolve: R) -> (SocketAddr, impl Future<Output = ()>)
+    pub fn serve<P, R, O>(
+        self,
+        profiles: P,
+        resolve: R,
+        orig_dst: O,
+    ) -> (SocketAddr, impl Future<Output = ()>)
     where
         R: Resolve<http::Concrete, Endpoint = Metadata, Error = Error>,
         <R as Resolve<http::Concrete>>::Resolution: Send,
@@ -150,13 +155,10 @@ impl Outbound<()> {
         P: profiles::GetProfile<profiles::LogicalAddr> + Clone + Send + Sync + Unpin + 'static,
         P::Future: Send,
         P::Error: Send,
+        O: GetOrigDstAddr,
     {
-        let (listen_addr, listen) = self
-            .config
-            .proxy
-            .server
-            .bind
-            .bind()
+        let (listen_addr, listen) = BindTcp::new(orig_dst)
+            .bind(self.config.proxy.server.clone())
             .expect("Failed to bind outbound listener");
 
         let serve = async move {

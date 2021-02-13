@@ -1,55 +1,45 @@
 use crate::{
     orig_dst::{GetOrigDstAddr, NoOrigDstAddr},
-    AcceptAddrs, ClientAddr, ListenAddr, Local, Remote, ServerAddr,
+    AcceptAddrs, ClientAddr, Keepalive, ListenAddr, Local, Remote, ServerAddr,
 };
 use futures::prelude::*;
+use linkerd_stack::Param;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
 use tokio_stream::wrappers::TcpListenerStream;
 use tracing::trace;
 
 #[derive(Clone, Debug)]
-pub struct BindTcp<O: GetOrigDstAddr = NoOrigDstAddr> {
-    bind_addr: ListenAddr,
-    keepalive: Option<Duration>,
+pub struct BindTcp<O> {
     orig_dst_addr: O,
 }
 
 pub type Connection = (AcceptAddrs, TcpStream);
 
-impl BindTcp {
-    pub fn new(addr: SocketAddr, keepalive: Option<Duration>) -> Self {
-        Self {
-            bind_addr: ListenAddr(addr),
-            keepalive,
-            orig_dst_addr: NoOrigDstAddr(()),
-        }
+impl Default for BindTcp<NoOrigDstAddr> {
+    fn default() -> Self {
+        Self::new(NoOrigDstAddr(()))
     }
 }
 
-impl<A: GetOrigDstAddr> BindTcp<A> {
-    pub fn with_orig_dst_addr<B: GetOrigDstAddr>(self, orig_dst_addr: B) -> BindTcp<B> {
-        BindTcp {
-            orig_dst_addr,
-            bind_addr: self.bind_addr,
-            keepalive: self.keepalive,
-        }
+impl<O: GetOrigDstAddr> BindTcp<O> {
+    pub fn new(orig_dst_addr: O) -> Self {
+        Self { orig_dst_addr }
     }
 
-    pub fn bind_addr(&self) -> ListenAddr {
-        self.bind_addr
-    }
-
-    pub fn keepalive(&self) -> Option<Duration> {
-        self.keepalive
-    }
-
-    pub fn bind(&self) -> io::Result<(SocketAddr, impl Stream<Item = io::Result<Connection>>)> {
-        let keepalive = self.keepalive;
+    pub fn bind<T>(
+        &self,
+        config: T,
+    ) -> io::Result<(SocketAddr, impl Stream<Item = io::Result<Connection>>)>
+    where
+        T: Param<ListenAddr> + Param<Keepalive>,
+    {
+        let ListenAddr(bind_addr) = config.param();
+        let Keepalive(keepalive) = config.param();
         let get_orig = self.orig_dst_addr.clone();
 
         let listen = {
-            let l = std::net::TcpListener::bind(self.bind_addr)?;
+            let l = std::net::TcpListener::bind(bind_addr)?;
             // Ensure that O_NONBLOCK is set on the socket before using it with Tokio.
             l.set_nonblocking(true)?;
             tokio::net::TcpListener::from_std(l).expect("Listener must be valid")
@@ -65,7 +55,7 @@ impl<A: GetOrigDstAddr> BindTcp<A> {
     fn accept(
         tcp: TcpStream,
         keepalive: Option<Duration>,
-        get_orig: A,
+        get_orig: O,
     ) -> io::Result<(AcceptAddrs, TcpStream)> {
         let addrs = {
             let local = Local(ServerAddr(tcp.local_addr()?));

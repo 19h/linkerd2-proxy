@@ -7,7 +7,7 @@ use linkerd_app_core::{
         http::{h1, h2},
         tap,
     },
-    transport::BindTcp,
+    transport::{Keepalive, ListenAddr},
     IpMatch, ProxyRuntime,
 };
 pub use linkerd_app_test as support;
@@ -15,14 +15,14 @@ use std::{net::SocketAddr, str::FromStr, time::Duration};
 
 const LOCALHOST: [u8; 4] = [127, 0, 0, 1];
 
-pub fn default_config(orig_dst: SocketAddr) -> Config {
+pub fn default_config() -> Config {
     Config {
         ingress_mode: false,
         allow_discovery: IpMatch::new(Some(IpNet::from_str("0.0.0.0/0").unwrap())).into(),
         proxy: config::ProxyConfig {
             server: config::ServerConfig {
-                bind: BindTcp::new(SocketAddr::new(LOCALHOST.into(), 0), None)
-                    .with_orig_dst_addr(orig_dst.into()),
+                addr: ListenAddr(SocketAddr::new(LOCALHOST.into(), 0)),
+                keepalive: Keepalive(None),
                 h2_settings: h2::Settings::default(),
             },
             connect: config::ConnectConfig {

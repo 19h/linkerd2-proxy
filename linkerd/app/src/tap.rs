@@ -1,8 +1,13 @@
 use futures::prelude::*;
 use indexmap::IndexSet;
 use linkerd_app_core::{
-    config::ServerConfig, drain, proxy::identity::LocalCrtKey, proxy::tap, serve, tls,
-    transport::AcceptAddrs, Error,
+    config::ServerConfig,
+    drain,
+    proxy::identity::LocalCrtKey,
+    proxy::tap,
+    serve, tls,
+    transport::{AcceptAddrs, BindTcp},
+    Error,
 };
 use std::{net::SocketAddr, pin::Pin};
 use tower::util::{service_fn, ServiceExt};
@@ -39,7 +44,7 @@ impl Config {
                 config,
                 permitted_client_ids,
             } => {
-                let (listen_addr, listen) = config.bind.bind()?;
+                let (listen_addr, listen) = BindTcp::default().bind(config)?;
 
                 let service = tap::AcceptPermittedClients::new(permitted_client_ids.into(), server);
                 let accept = tls::NewDetectTls::new(

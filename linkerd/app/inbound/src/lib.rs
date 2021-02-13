@@ -27,7 +27,7 @@ use linkerd_app_core::{
     serve,
     svc::{self, stack::Param},
     tls,
-    transport::{self, AcceptAddrs},
+    transport::{self, AcceptAddrs, BindTcp, GetOrigDstAddr},
     Error, NameMatch, ProxyRuntime,
 };
 use std::{fmt::Debug, future::Future, net::SocketAddr, time::Duration};
@@ -122,11 +122,12 @@ impl Inbound<()> {
         }
     }
 
-    pub fn serve<G, GSvc, P>(
+    pub fn serve<G, GSvc, P, O>(
         self,
         profiles: P,
         gateway: G,
-    ) -> (SocketAddr, impl Future<Output = ()> + Send)
+        orig_dst: O,
+    ) -> (SocketAddr, impl Future<Output = ()>)
     where
         G: svc::NewService<direct::GatewayConnection, Service = GSvc>,
         G: Clone + Send + Sync + Unpin + 'static,
@@ -138,13 +139,10 @@ impl Inbound<()> {
         P: profiles::GetProfile<profiles::LogicalAddr> + Clone + Send + Sync + 'static,
         P::Error: Send,
         P::Future: Send,
+        O: GetOrigDstAddr,
     {
-        let (listen_addr, listen) = self
-            .config
-            .proxy
-            .server
-            .bind
-            .bind()
+        let (listen_addr, listen) = BindTcp::new(orig_dst)
+            .bind(self.config.proxy.server.clone())
             .expect("Failed to bind inbound listener");
 
         let serve = async move {

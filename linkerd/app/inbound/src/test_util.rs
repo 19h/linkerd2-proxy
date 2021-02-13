@@ -8,7 +8,7 @@ use linkerd_app_core::{
         http::{h1, h2},
         tap,
     },
-    transport::BindTcp,
+    transport::{Keepalive, ListenAddr},
     NameMatch, ProxyRuntime,
 };
 pub use linkerd_app_test as support;
@@ -16,7 +16,7 @@ use std::{net::SocketAddr, time::Duration};
 
 const LOCALHOST: [u8; 4] = [127, 0, 0, 1];
 
-pub fn default_config(orig_dst: SocketAddr) -> Config {
+pub fn default_config() -> Config {
     let cluster_local = "svc.cluster.local."
         .parse::<Suffix>()
         .expect("`svc.cluster.local.` suffix is definitely valid");
@@ -24,8 +24,8 @@ pub fn default_config(orig_dst: SocketAddr) -> Config {
         allow_discovery: NameMatch::new(Some(cluster_local)),
         proxy: config::ProxyConfig {
             server: config::ServerConfig {
-                bind: BindTcp::new(SocketAddr::new(LOCALHOST.into(), 0), None)
-                    .with_orig_dst_addr(orig_dst.into()),
+                addr: ListenAddr(SocketAddr::new(LOCALHOST.into(), 0)),
+                keepalive: Keepalive(None),
                 h2_settings: h2::Settings::default(),
             },
             connect: config::ConnectConfig {

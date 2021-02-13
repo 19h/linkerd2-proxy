@@ -12,7 +12,10 @@ pub mod tap;
 pub use self::metrics::Metrics;
 use futures::{future, FutureExt, TryFutureExt};
 pub use linkerd_app_core::{self as core, metrics, trace};
-use linkerd_app_core::{control::ControlAddr, dns, drain, proxy::http, svc, Error, ProxyRuntime};
+use linkerd_app_core::{
+    control::ControlAddr, dns, drain, proxy::http, svc, transport::DefaultOrigDstAddr, Error,
+    ProxyRuntime,
+};
 use linkerd_app_gateway as gateway;
 use linkerd_app_inbound::{self as inbound, Inbound};
 use linkerd_app_outbound::{self as outbound, Outbound};
@@ -37,7 +40,9 @@ use tracing::{debug, error, info, info_span};
 #[derive(Clone, Debug)]
 pub struct Config {
     pub outbound: outbound::Config,
+    pub outbound_orig_dst: DefaultOrigDstAddr,
     pub inbound: inbound::Config,
+    pub inbound_orig_dst: DefaultOrigDstAddr,
     pub gateway: gateway::Config,
 
     pub dns: dns::Config,
@@ -82,8 +87,10 @@ impl Config {
             dst,
             identity,
             inbound,
+            inbound_orig_dst,
             oc_collector,
             outbound,
+            outbound_orig_dst,
             gateway,
             tap,
         } = self;
@@ -155,8 +162,10 @@ impl Config {
             dst.resolve.clone(),
         );
 
-        let (inbound_addr, inbound_serve) = inbound.serve(dst.profiles.clone(), gateway_stack);
-        let (outbound_addr, outbound_serve) = outbound.serve(dst.profiles, dst.resolve);
+        let (inbound_addr, inbound_serve) =
+            inbound.serve(dst.profiles.clone(), gateway_stack, inbound_orig_dst);
+        let (outbound_addr, outbound_serve) =
+            outbound.serve(dst.profiles, dst.resolve, outbound_orig_dst);
 
         let start_proxy = Box::pin(async move {
             tokio::spawn(outbound_serve.instrument(info_span!("outbound")));

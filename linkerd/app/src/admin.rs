@@ -4,7 +4,7 @@ use crate::core::{
     detect, drain, errors,
     metrics::{self, FmtMetrics},
     serve, tls, trace,
-    transport::AcceptAddrs,
+    transport::{AcceptAddrs, BindTcp},
     Error,
 };
 use crate::{
@@ -46,7 +46,7 @@ impl Config {
     {
         const DETECT_TIMEOUT: Duration = Duration::from_secs(1);
 
-        let (listen_addr, listen) = self.server.bind.bind()?;
+        let (listen_addr, listen) = BindTcp::default().bind(self.server)?;
 
         let (ready, latch) = admin::Readiness::new();
         let admin = admin::Admin::new(report, ready, shutdown, trace);
