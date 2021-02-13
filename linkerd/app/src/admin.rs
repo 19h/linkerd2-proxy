@@ -4,7 +4,7 @@ use crate::core::{
     detect, drain, errors, io,
     metrics::{self, FmtMetrics},
     serve, tls, trace,
-    transport::{listen::AcceptAddrs, Bind, Local, ServerAddr},
+    transport::{listen::AcceptAddrs, Bind, Local, OrigDstAddr, ProxyAddrs, ServerAddr},
     Error,
 };
 use crate::{
@@ -45,15 +45,24 @@ impl Config {
     where
         R: FmtMetrics + Clone + Send + 'static + Unpin,
         B: Bind<ServerConfig, Addrs = AcceptAddrs>,
-        B::Io: io::AsyncRead + io::AsyncWrite + io::Peek + Send + Sync + Unpin + 'static,
+        B::Accept: Send + 'static,
+        B::Io: io::AsyncRead
+            + io::AsyncWrite
+            + io::Peek
+            + io::PeerAddr
+            + Send
+            + Sync
+            + Unpin
+            + 'static,
     {
         const DETECT_TIMEOUT: Duration = Duration::from_secs(1);
 
         let (listen_addr, listen) = bind.bind(self.server)?;
 
         let (ready, latch) = admin::Readiness::new();
-        let admin = admin::Admin::new(report, ready, shutdown, trace);
-        let admin = svc::stack(admin)
+
+        // TODO this should use different stack types.
+        let admin = svc::stack(admin::Admin::new(report, ready, shutdown, trace))
             .push(metrics.http_endpoint.to_layer::<classify::Response, _>())
             .push_on_response(
                 svc::layers()
@@ -73,8 +82,13 @@ impl Config {
             ))
             .push(metrics.transport.layer_accept())
             .push_map_target(TcpAccept::from)
-            .check_new_clone::<tls::server::Meta<AcceptAddrs>>()
             .push(tls::NewDetectTls::layer(identity, DETECT_TIMEOUT))
+            .push_map_target(|AcceptAddrs { client, server }| ProxyAddrs {
+                client,
+                server,
+                // XXX We shouldn't do this, but it's where we're at for now.
+                orig_dst: OrigDstAddr(server.into()),
+            })
             .into_inner();
 
         let serve = Box::pin(serve::serve(listen, admin, drain.signaled()));

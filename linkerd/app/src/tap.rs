@@ -5,7 +5,7 @@ use linkerd_app_core::{
     drain, io,
     proxy::{identity::LocalCrtKey, tap},
     serve, tls,
-    transport::{Bind, Local, ServerAddr},
+    transport::{listen::AcceptAddrs, Bind, Local, ServerAddr},
     Error,
 };
 use std::pin::Pin;
@@ -39,10 +39,9 @@ impl Config {
         drain: drain::Watch,
     ) -> Result<Tap, Error>
     where
-        B: Bind<ServerConfig>,
-        B::Addrs: Clone,
+        B: Bind<ServerConfig, Addrs = AcceptAddrs>,
+        B::Accept: Send + 'static,
         B::Io: io::AsyncRead + io::AsyncWrite + io::Peek + Send + Sync + Unpin + 'static,
-        B::Accept: Send,
     {
         let (registry, server) = tap::new();
         match self {

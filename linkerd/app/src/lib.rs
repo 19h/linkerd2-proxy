@@ -13,14 +13,18 @@ pub use self::metrics::Metrics;
 use futures::{future, FutureExt, TryFutureExt};
 pub use linkerd_app_core::{self as core, metrics, trace};
 use linkerd_app_core::{
-    control::ControlAddr, dns, drain, proxy::http, svc, transport::DefaultOrigDstAddr, Error,
-    ProxyRuntime,
+    control::ControlAddr,
+    dns, drain,
+    proxy::http,
+    svc,
+    transport::{BindProxy, BindTcp, DefaultOrigDstAddr, Local, ServerAddr},
+    Error, ProxyRuntime,
 };
 use linkerd_app_gateway as gateway;
 use linkerd_app_inbound::{self as inbound, Inbound};
 use linkerd_app_outbound::{self as outbound, Outbound};
 use linkerd_channel::into_stream::IntoStream;
-use std::{net::SocketAddr, pin::Pin};
+use std::pin::Pin;
 use tokio::{sync::mpsc, time::Duration};
 use tracing::instrument::Instrument;
 use tracing::{debug, error, info, info_span};
@@ -58,9 +62,9 @@ pub struct App {
     drain: drain::Signal,
     dst: ControlAddr,
     identity: identity::Identity,
-    inbound_addr: SocketAddr,
+    inbound_addr: Local<ServerAddr>,
     oc_collector: oc_collector::OcCollector,
-    outbound_addr: SocketAddr,
+    outbound_addr: Local<ServerAddr>,
     start_proxy: Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>,
     tap: tap::Tap,
 }
@@ -105,7 +109,8 @@ impl Config {
 
         let (drain_tx, drain_rx) = drain::channel();
 
-        let tap = info_span!("tap").in_scope(|| tap.build(identity.local(), drain_rx.clone()))?;
+        let tap = info_span!("tap")
+            .in_scope(|| tap.build(BindTcp, identity.local(), drain_rx.clone()))?;
         let dst = {
             let metrics = metrics.control.clone();
             let dns = dns.resolver.clone();
@@ -126,7 +131,15 @@ impl Config {
             let drain = drain_rx.clone();
             let metrics = metrics.inbound.clone();
             info_span!("admin").in_scope(move || {
-                admin.build(identity, report, metrics, log_level, drain, shutdown_tx)
+                admin.build(
+                    report,
+                    BindTcp,
+                    identity,
+                    metrics,
+                    log_level,
+                    drain,
+                    shutdown_tx,
+                )
             })?
         };
 
@@ -162,10 +175,16 @@ impl Config {
             dst.resolve.clone(),
         );
 
-        let (inbound_addr, inbound_serve) =
-            inbound.serve(dst.profiles.clone(), gateway_stack, inbound_orig_dst);
-        let (outbound_addr, outbound_serve) =
-            outbound.serve(dst.profiles, dst.resolve, outbound_orig_dst);
+        let (inbound_addr, inbound_serve) = inbound.serve(
+            dst.profiles.clone(),
+            gateway_stack,
+            BindProxy::new(BindTcp, inbound_orig_dst),
+        );
+        let (outbound_addr, outbound_serve) = outbound.serve(
+            dst.profiles,
+            dst.resolve,
+            BindProxy::new(BindTcp, outbound_orig_dst),
+        );
 
         let start_proxy = Box::pin(async move {
             tokio::spawn(outbound_serve.instrument(info_span!("outbound")));
@@ -187,22 +206,22 @@ impl Config {
 }
 
 impl App {
-    pub fn admin_addr(&self) -> SocketAddr {
-        self.admin.listen_addr
+    pub fn admin_addr(&self) -> Local<ServerAddr> {
+        self.admin.listen_addr.into()
     }
 
-    pub fn inbound_addr(&self) -> SocketAddr {
-        self.inbound_addr
+    pub fn inbound_addr(&self) -> Local<ServerAddr> {
+        self.inbound_addr.into()
     }
 
-    pub fn outbound_addr(&self) -> SocketAddr {
+    pub fn outbound_addr(&self) -> Local<ServerAddr> {
         self.outbound_addr
     }
 
-    pub fn tap_addr(&self) -> Option<SocketAddr> {
+    pub fn tap_addr(&self) -> Option<Local<ServerAddr>> {
         match self.tap {
             tap::Tap::Disabled { .. } => None,
-            tap::Tap::Enabled { listen_addr, .. } => Some(listen_addr.into()),
+            tap::Tap::Enabled { listen_addr, .. } => Some(listen_addr),
         }
     }
 
