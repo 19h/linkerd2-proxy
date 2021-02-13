@@ -4,7 +4,7 @@ use crate::{
         support::{connect::Connect, http_util, profile, resolver},
         *,
     },
-    Config, Inbound,
+    Inbound,
 };
 use hyper::{client::conn::Builder as ClientBuilder, Body, Request, Response};
 use linkerd_app_core::{
@@ -18,7 +18,6 @@ use linkerd_app_core::{
 use tracing::Instrument;
 
 fn build_server<I>(
-    cfg: Config,
     rt: ProxyRuntime,
     profiles: resolver::Profiles,
     connect: Connect<ConnectAddr>,
@@ -40,7 +39,7 @@ where
             transport::ConnectAddr(([127, 0, 0, 1], t.param()).into())
         })
         .into_inner();
-    Inbound::new(cfg, rt)
+    Inbound::new(default_config(), rt)
         .with_stack(connect)
         .push_http_router(profiles)
         .push_http_server()
@@ -73,9 +72,8 @@ async fn unmeshed_http1_hello_world() {
     profile_tx.send(profile::Profile::default()).unwrap();
 
     // Build the outbound server
-    let cfg = default_config();
     let (rt, _shutdown) = runtime();
-    let server = build_server(cfg, rt, profiles, connect).new_service(accept);
+    let server = build_server(rt, profiles, connect).new_service(accept);
     let (mut client, bg) = http_util::connect_and_accept(&mut client, server).await;
 
     let req = Request::builder()
@@ -120,9 +118,8 @@ async fn downgrade_origin_form() {
     profile_tx.send(profile::Profile::default()).unwrap();
 
     // Build the outbound server
-    let cfg = default_config();
     let (rt, _shutdown) = runtime();
-    let server = build_server(cfg, rt, profiles, connect).new_service(accept);
+    let server = build_server(rt, profiles, connect).new_service(accept);
     let (mut client, bg) = http_util::connect_and_accept(&mut client, server).await;
 
     let req = Request::builder()
@@ -168,9 +165,8 @@ async fn downgrade_absolute_form() {
     profile_tx.send(profile::Profile::default()).unwrap();
 
     // Build the outbound server
-    let cfg = default_config();
     let (rt, _shutdown) = runtime();
-    let server = build_server(cfg, rt, profiles, connect).new_service(accept);
+    let server = build_server(rt, profiles, connect).new_service(accept);
     let (mut client, bg) = http_util::connect_and_accept(&mut client, server).await;
 
     let req = Request::builder()
