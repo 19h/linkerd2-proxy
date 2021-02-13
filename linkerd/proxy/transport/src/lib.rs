@@ -4,11 +4,13 @@ pub mod addrs;
 mod connect;
 pub mod listen;
 pub mod metrics;
+mod orig_dst;
 
 pub use self::{
     addrs::{ClientAddr, ListenAddr, Local, OrigDstAddr, Remote, ServerAddr},
     connect::{ConnectAddr, ConnectTcp},
-    listen::{BindTcp, DefaultOrigDstAddr, GetOrigDstAddr, NoOrigDstAddr},
+    listen::BindTcp,
+    orig_dst::{DefaultOrigDstAddr, GetOrigDstAddr, NoOrigDstAddr},
 };
 use linkerd_stack::Param;
 use std::{net::SocketAddr, time::Duration};
