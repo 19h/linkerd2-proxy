@@ -202,7 +202,7 @@ impl App {
     pub fn tap_addr(&self) -> Option<SocketAddr> {
         match self.tap {
             tap::Tap::Disabled { .. } => None,
-            tap::Tap::Enabled { listen_addr, .. } => Some(listen_addr),
+            tap::Tap::Enabled { listen_addr, .. } => Some(listen_addr.into()),
         }
     }
 

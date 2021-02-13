@@ -2,14 +2,13 @@ use futures::prelude::*;
 use indexmap::IndexSet;
 use linkerd_app_core::{
     config::ServerConfig,
-    drain,
-    proxy::identity::LocalCrtKey,
-    proxy::tap,
+    drain, io,
+    proxy::{identity::LocalCrtKey, tap},
     serve, tls,
-    transport::{AcceptAddrs, BindTcp},
+    transport::{Bind, Local, ServerAddr},
     Error,
 };
-use std::{net::SocketAddr, pin::Pin};
+use std::pin::Pin;
 use tower::util::{service_fn, ServiceExt};
 
 #[derive(Clone, Debug)]
@@ -26,14 +25,25 @@ pub enum Tap {
         registry: tap::Registry,
     },
     Enabled {
-        listen_addr: SocketAddr,
+        listen_addr: Local<ServerAddr>,
         registry: tap::Registry,
         serve: Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'static>>,
     },
 }
 
 impl Config {
-    pub fn build(self, identity: Option<LocalCrtKey>, drain: drain::Watch) -> Result<Tap, Error> {
+    pub fn build<B>(
+        self,
+        bind: B,
+        identity: Option<LocalCrtKey>,
+        drain: drain::Watch,
+    ) -> Result<Tap, Error>
+    where
+        B: Bind<ServerConfig>,
+        B::Addrs: Clone,
+        B::Io: io::AsyncRead + io::AsyncWrite + io::Peek + Send + Sync + Unpin + 'static,
+        B::Accept: Send,
+    {
         let (registry, server) = tap::new();
         match self {
             Config::Disabled => {
@@ -44,12 +54,12 @@ impl Config {
                 config,
                 permitted_client_ids,
             } => {
-                let (listen_addr, listen) = BindTcp::default().bind(config)?;
+                let (listen_addr, listen) = bind.bind(config)?;
 
                 let service = tap::AcceptPermittedClients::new(permitted_client_ids.into(), server);
                 let accept = tls::NewDetectTls::new(
                     identity,
-                    move |meta: tls::server::Meta<AcceptAddrs>| {
+                    move |meta: tls::server::Meta<_>| {
                         let service = service.clone();
                         service_fn(move |io| {
                             let fut = service.clone().oneshot((meta.clone(), io));

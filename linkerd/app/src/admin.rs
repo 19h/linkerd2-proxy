@@ -1,10 +1,10 @@
 use crate::core::{
     admin, classify,
     config::ServerConfig,
-    detect, drain, errors,
+    detect, drain, errors, io,
     metrics::{self, FmtMetrics},
     serve, tls, trace,
-    transport::{AcceptAddrs, BindTcp},
+    transport::{listen::AcceptAddrs, Bind, Local, ServerAddr},
     Error,
 };
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
     inbound::target::{HttpAccept, Target, TcpAccept},
     svc,
 };
-use std::{fmt, net::SocketAddr, pin::Pin, time::Duration};
+use std::{fmt, pin::Pin, time::Duration};
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug)]
@@ -23,7 +23,7 @@ pub struct Config {
 }
 
 pub struct Admin {
-    pub listen_addr: SocketAddr,
+    pub listen_addr: Local<ServerAddr>,
     pub latch: admin::Latch,
     pub serve: Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'static>>,
 }
@@ -32,10 +32,11 @@ pub struct Admin {
 pub struct AdminHttpOnly(());
 
 impl Config {
-    pub fn build<R>(
+    pub fn build<R, B>(
         self,
-        identity: Option<LocalCrtKey>,
         report: R,
+        bind: B,
+        identity: Option<LocalCrtKey>,
         metrics: metrics::Proxy,
         trace: trace::Handle,
         drain: drain::Watch,
@@ -43,10 +44,12 @@ impl Config {
     ) -> Result<Admin, Error>
     where
         R: FmtMetrics + Clone + Send + 'static + Unpin,
+        B: Bind<ServerConfig, Addrs = AcceptAddrs>,
+        B::Io: io::AsyncRead + io::AsyncWrite + io::Peek + Send + Sync + Unpin + 'static,
     {
         const DETECT_TIMEOUT: Duration = Duration::from_secs(1);
 
-        let (listen_addr, listen) = BindTcp::default().bind(self.server)?;
+        let (listen_addr, listen) = bind.bind(self.server)?;
 
         let (ready, latch) = admin::Readiness::new();
         let admin = admin::Admin::new(report, ready, shutdown, trace);

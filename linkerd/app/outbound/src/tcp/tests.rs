@@ -13,7 +13,7 @@ use linkerd_app_core::{
     io, svc,
     svc::NewService,
     tls,
-    transport::{AcceptAddrs, ClientAddr, Local, OrigDstAddr, Remote, ServerAddr},
+    transport::{ClientAddr, Local, OrigDstAddr, ProxyAddrs, Remote, ServerAddr},
     Conditional, Error, IpMatch,
 };
 use std::{
@@ -717,7 +717,7 @@ async fn profile_endpoint_propagates_conn_errors() {
     // Build the outbound server
     let mut server = build_server(default_config(), profiles, resolver, connect);
 
-    let svc = server.new_service(AcceptAddrs {
+    let svc = server.new_service(ProxyAddrs {
         local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
         client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
         orig_dst: Some(OrigDstAddr(ep1)),
@@ -785,7 +785,7 @@ fn build_server<I>(
     resolver: resolver::Dst<resolver::Metadata>,
     connect: Connect<Endpoint>,
 ) -> impl svc::NewService<
-    AcceptAddrs,
+    ProxyAddrs,
     Service = impl tower::Service<
         I,
         Response = (),
@@ -812,7 +812,7 @@ fn hello_world_client<N, S>(
     new_svc: &mut N,
 ) -> impl Future<Output = ()> + Send
 where
-    N: svc::NewService<AcceptAddrs, Service = S> + Send + 'static,
+    N: svc::NewService<ProxyAddrs, Service = S> + Send + 'static,
     S: svc::Service<support::io::Mock, Response = ()> + Send + 'static,
     S::Error: Into<Error>,
     S::Future: Send + 'static,
@@ -820,10 +820,10 @@ where
     let span = tracing::info_span!("hello_world_client", %orig_dst);
     let svc = {
         let _e = span.enter();
-        let addrs = AcceptAddrs {
+        let addrs = ProxyAddrs {
             local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
             client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
-            orig_dst: Some(OrigDstAddr(orig_dst)),
+            orig_dst: OrigDstAddr(orig_dst),
         };
         let svc = new_svc.new_service(addrs);
         tracing::trace!("new service");

@@ -13,7 +13,7 @@ use linkerd_app_core::{
     io,
     svc::{self, NewService},
     tls,
-    transport::{AcceptAddrs, ClientAddr, Local, OrigDstAddr, Remote, ServerAddr},
+    transport::{ClientAddr, Local, OrigDstAddr, ProxyAddrs, Remote, ServerAddr},
     Error, ProxyRuntime,
 };
 use std::{
@@ -33,7 +33,7 @@ fn build_server<I>(
     resolver: resolver::Dst<resolver::Metadata>,
     connect: Connect<Endpoint>,
 ) -> impl svc::NewService<
-    AcceptAddrs,
+    ProxyAddrs,
     Service = impl tower::Service<
         I,
         Response = (),
@@ -105,11 +105,11 @@ impl<I> svc::Service<I> for NoTcpBalancer {
     }
 }
 
-fn addrs(od: SocketAddr) -> AcceptAddrs {
-    AcceptAddrs {
+fn addrs(od: SocketAddr) -> ProxyAddrs {
+    ProxyAddrs {
         local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
         client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
-        orig_dst: Some(OrigDstAddr(od)),
+        orig_dst: OrigDstAddr(od),
     }
 }
 
