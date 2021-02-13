@@ -30,6 +30,7 @@ where
 
 pub struct BindTcp;
 
+#[derive(Clone, Debug)]
 pub struct AcceptAddrs {
     pub client: Remote<ClientAddr>,
     pub server: Local<ServerAddr>,

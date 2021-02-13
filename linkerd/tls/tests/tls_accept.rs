@@ -11,7 +11,8 @@ use linkerd_error::Never;
 use linkerd_identity as id;
 use linkerd_io::{self as io, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use linkerd_proxy_transport::{
-    AcceptAddrs, BindTcp, ConnectAddr, ConnectTcp, Keepalive, ListenAddr,
+    listen::{bind_tcp, AcceptAddrs},
+    ConnectAddr, ConnectTcp, Keepalive, ListenAddr, Local, ServerAddr,
 };
 use linkerd_stack::{NewService, Param};
 use linkerd_tls as tls;
@@ -188,7 +189,7 @@ where
             std::time::Duration::from_secs(10),
         );
 
-        let (listen_addr, listen) = BindTcp::default().bind(Server(addr)).expect("must bind");
+        let (Local(ServerAddr(listen_addr)), listen) = bind_tcp(Server(addr)).expect("must bind");
         let server = async move {
             futures::pin_mut!(listen);
             let (meta, io) = listen
