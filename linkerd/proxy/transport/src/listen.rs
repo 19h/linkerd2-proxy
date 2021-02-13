@@ -2,10 +2,10 @@ use crate::{
     orig_dst::{GetOrigDstAddr, NoOrigDstAddr},
     AcceptAddrs, ClientAddr, ListenAddr, Local, Remote, ServerAddr,
 };
-use async_stream::try_stream;
 use futures::prelude::*;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::net::TcpStream;
+use tokio_stream::wrappers::TcpListenerStream;
 use tracing::trace;
 
 #[derive(Clone, Debug)]
@@ -45,41 +45,45 @@ impl<A: GetOrigDstAddr> BindTcp<A> {
     }
 
     pub fn bind(&self) -> io::Result<(SocketAddr, impl Stream<Item = io::Result<Connection>>)> {
-        let listen = std::net::TcpListener::bind(self.bind_addr)?;
-        // Ensure that O_NONBLOCK is set on the socket before using it with Tokio.
-        listen.set_nonblocking(true)?;
-        let addr = listen.local_addr()?;
         let keepalive = self.keepalive;
         let get_orig = self.orig_dst_addr.clone();
 
-        let accept = try_stream! {
-            tokio::pin! {
-                // The tokio listener is built lazily so that it is initialized on
-                // the proper runtime.
-                let listen = tokio::net::TcpListener::from_std(listen).expect("listener must be valid");
-            };
-
-            while let (tcp, client_addr) = listen.accept().await? {
-                super::set_nodelay_or_warn(&tcp);
-                super::set_keepalive_or_warn(&tcp, keepalive);
-
-                let local_addr = tcp.local_addr()?;
-                let orig_dst = get_orig.orig_dst_addr(&tcp);
-                trace!(
-                    local.addr = %local_addr,
-                    client.addr = %client_addr,
-                    orig.addr = ?orig_dst,
-                    "Accepted",
-                );
-                let addrs = AcceptAddrs {
-                    local: Local(ServerAddr(local_addr)),
-                    client: Remote(ClientAddr(client_addr)),
-                    orig_dst
-                };
-                yield (addrs, tcp);
-            }
+        let listen = {
+            let l = std::net::TcpListener::bind(self.bind_addr)?;
+            // Ensure that O_NONBLOCK is set on the socket before using it with Tokio.
+            l.set_nonblocking(true)?;
+            tokio::net::TcpListener::from_std(l).expect("Listener must be valid")
         };
+        let addr = listen.local_addr()?;
+
+        let accept = TcpListenerStream::new(listen)
+            .and_then(move |tcp| future::ready(Self::accept(tcp, keepalive, get_orig.clone())));
 
         Ok((addr, accept))
+    }
+
+    fn accept(
+        tcp: TcpStream,
+        keepalive: Option<Duration>,
+        get_orig: A,
+    ) -> io::Result<(AcceptAddrs, TcpStream)> {
+        super::set_nodelay_or_warn(&tcp);
+        super::set_keepalive_or_warn(&tcp, keepalive);
+
+        let local = Local(ServerAddr(tcp.local_addr()?));
+        let client = Remote(ClientAddr(tcp.peer_addr()?));
+        let orig_dst = get_orig.orig_dst_addr(&tcp);
+        trace!(
+            local.addr = %local,
+            client.addr = %client,
+            orig.addr = ?orig_dst,
+            "Accepted",
+        );
+        let addrs = AcceptAddrs {
+            local,
+            client,
+            orig_dst,
+        };
+        Ok((addrs, tcp))
     }
 }
