@@ -234,10 +234,7 @@ mod client {
         transport::ConnectAddr,
     };
     use linkerd_proxy_http::h2::Settings as H2Settings;
-    use std::{
-        net::SocketAddr,
-        task::{Context, Poll},
-    };
+    use std::net::SocketAddr;
 
     #[derive(Clone, Hash, Debug, Eq, PartialEq)]
     pub struct Target {
@@ -251,22 +248,11 @@ mod client {
         }
     }
 
-    #[derive(Debug)]
-    pub struct Client<C, B> {
-        inner: http::h2::Connect<C, B>,
-    }
-
     // === impl Target ===
 
     impl Param<ConnectAddr> for Target {
         fn param(&self) -> ConnectAddr {
             ConnectAddr(self.addr)
-        }
-    }
-
-    impl Param<SocketAddr> for Target {
-        fn param(&self) -> SocketAddr {
-            self.addr
         }
     }
 
@@ -278,47 +264,10 @@ mod client {
 
     // === impl Layer ===
 
-    pub fn layer<C, B>() -> impl svc::Layer<C, Service = Client<C, B>> + Copy
+    pub fn layer<C, B>() -> impl svc::Layer<C, Service = http::h2::Connect<C, B>> + Copy
     where
         http::h2::Connect<C, B>: tower::Service<Target>,
     {
-        svc::layer::mk(|mk_conn| {
-            let inner = http::h2::Connect::new(mk_conn, H2Settings::default());
-            Client { inner }
-        })
-    }
-
-    // === impl Client ===
-
-    impl<C, B> tower::Service<Target> for Client<C, B>
-    where
-        http::h2::Connect<C, B>: tower::Service<Target>,
-    {
-        type Response = <http::h2::Connect<C, B> as tower::Service<Target>>::Response;
-        type Error = <http::h2::Connect<C, B> as tower::Service<Target>>::Error;
-        type Future = <http::h2::Connect<C, B> as tower::Service<Target>>::Future;
-
-        #[inline]
-        fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.inner.poll_ready(cx)
-        }
-
-        #[inline]
-        fn call(&mut self, target: Target) -> Self::Future {
-            self.inner.call(target)
-        }
-    }
-
-    // A manual impl is needed since derive adds `B: Clone`, but that's just
-    // a PhantomData.
-    impl<C, B> Clone for Client<C, B>
-    where
-        http::h2::Connect<C, B>: Clone,
-    {
-        fn clone(&self) -> Self {
-            Client {
-                inner: self.inner.clone(),
-            }
-        }
+        svc::layer::mk(|mk_conn| http::h2::Connect::new(mk_conn, H2Settings::default()))
     }
 }
