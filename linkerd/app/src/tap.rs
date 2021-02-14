@@ -5,7 +5,7 @@ use linkerd_app_core::{
     drain, io,
     proxy::{identity::LocalCrtKey, tap},
     serve, tls,
-    transport::{listen::AcceptAddrs, Bind, Local, ServerAddr},
+    transport::{bind::AcceptAddrs, Bind, Local, ServerAddr},
     Error,
 };
 use std::pin::Pin;

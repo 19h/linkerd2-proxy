@@ -1,15 +1,15 @@
 #![deny(warnings, rust_2018_idioms)]
 
 pub mod addrs;
+pub mod bind;
 mod connect;
-pub mod listen;
 pub mod metrics;
 mod orig_dst;
 
 pub use self::{
     addrs::{ClientAddr, ListenAddr, Local, OrigDstAddr, Remote, ServerAddr},
+    bind::{bind_tcp, Bind, BindTcp},
     connect::{ConnectAddr, ConnectTcp},
-    listen::{bind_tcp, Bind, BindTcp},
     orig_dst::{DefaultOrigDstAddr, GetOrigDstAddr},
 };
 use std::time::Duration;

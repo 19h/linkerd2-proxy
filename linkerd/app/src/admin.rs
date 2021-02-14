@@ -4,7 +4,7 @@ use crate::core::{
     detect, drain, errors, io,
     metrics::{self, FmtMetrics},
     serve, tls, trace,
-    transport::{listen::AcceptAddrs, Bind, Local, OrigDstAddr, ProxyAddrs, ServerAddr},
+    transport::{bind::AcceptAddrs, Bind, Local, OrigDstAddr, ProxyAddrs, ServerAddr},
     Error,
 };
 use crate::{

@@ -11,7 +11,7 @@ use linkerd_error::Never;
 use linkerd_identity as id;
 use linkerd_io::{self as io, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use linkerd_proxy_transport::{
-    listen::{bind_tcp, AcceptAddrs},
+    bind::{bind_tcp, AcceptAddrs},
     ConnectAddr, ConnectTcp, Keepalive, ListenAddr, Local, ServerAddr,
 };
 use linkerd_stack::{NewService, Param};
