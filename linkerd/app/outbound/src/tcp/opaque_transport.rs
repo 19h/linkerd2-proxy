@@ -118,6 +118,7 @@ mod test {
         io::{self, AsyncWriteExt},
         proxy::api_resolve::{Metadata, ProtocolHint},
         tls,
+        transport::OrigDstAddr,
         transport_header::TransportHeader,
         Conditional,
     };
@@ -132,7 +133,7 @@ mod test {
             tls: Conditional::None(tls::NoClientTls::NotProvidedByServiceDiscovery),
             metadata,
             logical: Logical {
-                orig_dst: ([127, 0, 0, 2], 4321).into(),
+                orig_dst: OrigDstAddr(([127, 0, 0, 2], 4321).into()),
                 profile: None,
                 protocol: (),
             },
@@ -169,7 +170,7 @@ mod test {
             inner: service_fn(|ep: Endpoint<()>| {
                 assert_eq!(ep.addr.port(), 4143);
                 let hdr = TransportHeader {
-                    port: ep.logical.orig_dst.port(),
+                    port: ep.logical.orig_dst.as_ref().port(),
                     name: None,
                     protocol: None,
                 };
@@ -239,7 +240,7 @@ mod test {
             inner: service_fn(|ep: Endpoint<()>| {
                 assert_eq!(ep.addr.port(), 4143);
                 let hdr = TransportHeader {
-                    port: ep.logical.orig_dst.port(),
+                    port: ep.logical.orig_dst.as_ref().port(),
                     name: None,
                     protocol: None,
                 };

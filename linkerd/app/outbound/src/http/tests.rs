@@ -107,7 +107,7 @@ impl<I> svc::Service<I> for NoTcpBalancer {
 
 fn addrs(od: SocketAddr) -> ProxyAddrs {
     ProxyAddrs {
-        local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
+        server: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
         client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
         orig_dst: OrigDstAddr(od),
     }

@@ -32,6 +32,7 @@ pub struct Admin {
 pub struct AdminHttpOnly(());
 
 impl Config {
+    #[allow(clippy::clippy::too_many_arguments)]
     pub fn build<R, B>(
         self,
         report: R,

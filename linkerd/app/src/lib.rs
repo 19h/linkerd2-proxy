@@ -207,11 +207,11 @@ impl Config {
 
 impl App {
     pub fn admin_addr(&self) -> Local<ServerAddr> {
-        self.admin.listen_addr.into()
+        self.admin.listen_addr
     }
 
     pub fn inbound_addr(&self) -> Local<ServerAddr> {
-        self.inbound_addr.into()
+        self.inbound_addr
     }
 
     pub fn outbound_addr(&self) -> Local<ServerAddr> {

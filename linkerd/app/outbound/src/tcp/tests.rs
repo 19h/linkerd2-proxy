@@ -14,7 +14,7 @@ use linkerd_app_core::{
     svc::NewService,
     tls,
     transport::{ClientAddr, Local, OrigDstAddr, ProxyAddrs, Remote, ServerAddr},
-    Conditional, Error, IpMatch,
+    Addr, Conditional, Error, IpMatch,
 };
 use std::{
     future::Future,
@@ -38,7 +38,7 @@ async fn plaintext_tcp() {
     // address to resolve, etc.
     let target_addr = SocketAddr::new([0, 0, 0, 0].into(), 666);
     let logical = Logical {
-        orig_dst: target_addr,
+        orig_dst: OrigDstAddr(target_addr),
         profile: Some(profile::only_default()),
         protocol: (),
     };
@@ -81,13 +81,13 @@ async fn tls_when_hinted() {
     let _trace = support::trace_init();
 
     let tls = Logical {
-        orig_dst: SocketAddr::new([0, 0, 0, 0].into(), 5550),
+        orig_dst: OrigDstAddr(([0, 0, 0, 0], 5550).into()),
         profile: Some(profile::only_default()),
         protocol: (),
     };
 
     let plain = Logical {
-        orig_dst: SocketAddr::new([0, 0, 0, 0].into(), 5551),
+        orig_dst: OrigDstAddr(([0, 0, 0, 0], 5551).into()),
         profile: Some(profile::only_default()),
         protocol: (),
     };
@@ -116,10 +116,14 @@ async fn tls_when_hinted() {
     // Configure the mock destination resolver to just give us a single endpoint
     // for the target, which always exists and has no metadata.
     let resolver = support::resolver()
-        .endpoint_exists(plain.orig_dst, plain.orig_dst, Default::default())
         .endpoint_exists(
-            tls.orig_dst,
-            tls.orig_dst,
+            Addr::Socket(plain.orig_dst.into()),
+            plain.orig_dst.into(),
+            Default::default(),
+        )
+        .endpoint_exists(
+            Addr::Socket(tls.orig_dst.into()),
+            tls.orig_dst.into(),
             support::resolver::Metadata::new(
                 Default::default(),
                 support::resolver::ProtocolHint::Unknown,
@@ -718,9 +722,9 @@ async fn profile_endpoint_propagates_conn_errors() {
     let mut server = build_server(default_config(), profiles, resolver, connect);
 
     let svc = server.new_service(ProxyAddrs {
-        local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
+        server: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
         client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
-        orig_dst: Some(OrigDstAddr(ep1)),
+        orig_dst: OrigDstAddr(ep1),
     });
 
     let res = svc
@@ -821,7 +825,7 @@ where
     let svc = {
         let _e = span.enter();
         let addrs = ProxyAddrs {
-            local: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
+            server: Local(ServerAddr(([127, 0, 0, 1], 4140).into())),
             client: Remote(ClientAddr(([127, 0, 0, 1], 666).into())),
             orig_dst: OrigDstAddr(orig_dst),
         };

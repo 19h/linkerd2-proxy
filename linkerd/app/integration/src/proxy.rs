@@ -362,10 +362,10 @@ async fn run(proxy: Proxy, mut env: TestEnv, random_ports: bool) -> Listening {
     );
 
     Listening {
-        tap: tap_addr,
-        inbound: inbound_addr,
-        outbound: outbound_addr,
-        metrics: metrics_addr,
+        tap: tap_addr.map(Into::into),
+        inbound: inbound_addr.into(),
+        outbound: outbound_addr.into(),
+        metrics: metrics_addr.into(),
 
         outbound_server: proxy.outbound_server,
         inbound_server: proxy.inbound_server,
