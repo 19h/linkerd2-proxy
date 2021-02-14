@@ -7,7 +7,7 @@ pub mod metrics;
 mod orig_dst;
 
 pub use self::{
-    addrs::{ClientAddr, ListenAddr, Local, OrigDstAddr, Remote, ServerAddr},
+    addrs::{BindAddr, ClientAddr, Local, OrigDstAddr, Remote, ServerAddr},
     bind::{bind_tcp, Bind, BindTcp},
     connect::{ConnectAddr, ConnectTcp},
     orig_dst::{DefaultOrigDstAddr, GetOrigDstAddr},

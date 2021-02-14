@@ -2,13 +2,13 @@ pub use crate::{
     exp_backoff::ExponentialBackoff,
     proxy::http::{h1, h2},
     svc::stack::Param,
-    transport::{DefaultOrigDstAddr, Keepalive, ListenAddr},
+    transport::{BindAddr, DefaultOrigDstAddr, Keepalive},
 };
 use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub struct ServerConfig {
-    pub addr: ListenAddr,
+    pub addr: BindAddr,
     pub keepalive: Keepalive,
     pub h2_settings: h2::Settings,
 }
@@ -33,8 +33,8 @@ pub struct ProxyConfig {
     pub detect_protocol_timeout: Duration,
 }
 
-impl Param<ListenAddr> for ServerConfig {
-    fn param(&self) -> ListenAddr {
+impl Param<BindAddr> for ServerConfig {
+    fn param(&self) -> BindAddr {
         self.addr
     }
 }

@@ -4,7 +4,7 @@ use crate::core::{
     control::{Config as ControlConfig, ControlAddr},
     proxy::http::{h1, h2},
     tls,
-    transport::{Keepalive, ListenAddr},
+    transport::{BindAddr, Keepalive},
     Addr, AddrMatch, Conditional, NameMatch,
 };
 use crate::{dns, gateway, identity, inbound, oc_collector, outbound};
@@ -391,7 +391,7 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
         let addr = outbound_listener_addr?
             .unwrap_or_else(|| parse_socket_addr(DEFAULT_OUTBOUND_LISTEN_ADDR).unwrap());
         let server = ServerConfig {
-            addr: ListenAddr(addr),
+            addr: BindAddr(addr),
             keepalive: Keepalive(keepalive),
             h2_settings: h2::Settings {
                 keepalive_timeout: keepalive,
@@ -451,7 +451,7 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
             .unwrap_or_else(|| parse_socket_addr(DEFAULT_INBOUND_LISTEN_ADDR).unwrap());
         let keepalive = Keepalive(inbound_accept_keepalive?);
         let server = ServerConfig {
-            addr: ListenAddr(addr),
+            addr: BindAddr(addr),
             keepalive,
             h2_settings: h2::Settings {
                 keepalive_timeout: keepalive.into(),
@@ -558,7 +558,7 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
     let admin = super::admin::Config {
         metrics_retain_idle: metrics_retain_idle?.unwrap_or(DEFAULT_METRICS_RETAIN_IDLE),
         server: ServerConfig {
-            addr: ListenAddr(
+            addr: BindAddr(
                 admin_listener_addr?
                     .unwrap_or_else(|| parse_socket_addr(DEFAULT_ADMIN_LISTEN_ADDR).unwrap()),
             ),
@@ -607,7 +607,7 @@ pub fn parse_config<S: Strings>(strings: &S) -> Result<super::Config, EnvError> 
         .map(|(addr, ids)| super::tap::Config::Enabled {
             permitted_client_ids: ids,
             config: ServerConfig {
-                addr: ListenAddr(addr),
+                addr: BindAddr(addr),
                 keepalive: inbound.proxy.server.keepalive,
                 h2_settings,
             },

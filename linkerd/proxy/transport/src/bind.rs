@@ -1,4 +1,4 @@
-use crate::{ClientAddr, Keepalive, ListenAddr, Local, Remote, ServerAddr};
+use crate::{BindAddr, ClientAddr, Keepalive, Local, Remote, ServerAddr};
 use futures::prelude::*;
 use linkerd_stack::Param;
 use std::{io, pin::Pin, time::Duration};
@@ -38,7 +38,7 @@ pub struct AcceptAddrs {
 
 impl<T> Bind<T> for BindTcp
 where
-    T: Param<ListenAddr> + Param<Keepalive> + 'static,
+    T: Param<BindAddr> + Param<Keepalive> + 'static,
 {
     type Addrs = AcceptAddrs;
     type Io = TcpStream;
@@ -57,9 +57,9 @@ pub fn bind_tcp<T>(
     impl Stream<Item = io::Result<(AcceptAddrs, TcpStream)>> + Send,
 )>
 where
-    T: Param<ListenAddr> + Param<Keepalive>,
+    T: Param<BindAddr> + Param<Keepalive>,
 {
-    let ListenAddr(bind_addr) = config.param();
+    let BindAddr(bind_addr) = config.param();
     let Keepalive(keepalive) = config.param();
 
     let listen = {

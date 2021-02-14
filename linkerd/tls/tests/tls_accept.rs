@@ -12,7 +12,7 @@ use linkerd_identity as id;
 use linkerd_io::{self as io, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use linkerd_proxy_transport::{
     bind::{bind_tcp, AcceptAddrs},
-    ConnectAddr, ConnectTcp, Keepalive, ListenAddr, Local, ServerAddr,
+    BindAddr, ConnectAddr, ConnectTcp, Keepalive, Local, ServerAddr,
 };
 use linkerd_stack::{NewService, Param};
 use linkerd_tls as tls;
@@ -343,9 +343,9 @@ impl Param<tls::LocalId> for Tls {
     }
 }
 
-impl Param<ListenAddr> for Server {
-    fn param(&self) -> ListenAddr {
-        ListenAddr(self.0)
+impl Param<BindAddr> for Server {
+    fn param(&self) -> BindAddr {
+        BindAddr(self.0)
     }
 }
 

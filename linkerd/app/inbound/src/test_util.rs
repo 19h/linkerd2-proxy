@@ -8,7 +8,7 @@ use linkerd_app_core::{
         http::{h1, h2},
         tap,
     },
-    transport::{Keepalive, ListenAddr},
+    transport::{BindAddr, Keepalive},
     NameMatch, ProxyRuntime,
 };
 pub use linkerd_app_test as support;
@@ -24,7 +24,7 @@ pub fn default_config() -> Config {
         allow_discovery: NameMatch::new(Some(cluster_local)),
         proxy: config::ProxyConfig {
             server: config::ServerConfig {
-                addr: ListenAddr(SocketAddr::new(LOCALHOST.into(), 0)),
+                addr: BindAddr(SocketAddr::new(LOCALHOST.into(), 0)),
                 keepalive: Keepalive(None),
                 h2_settings: h2::Settings::default(),
             },
