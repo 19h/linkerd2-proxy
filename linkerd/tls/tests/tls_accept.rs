@@ -12,7 +12,7 @@ use linkerd_identity as id;
 use linkerd_io::{self as io, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use linkerd_proxy_transport::{
     bind::{bind_tcp, AcceptAddrs},
-    BindAddr, ConnectAddr, ConnectTcp, Keepalive, Local, ServerAddr,
+    BindAddr, ConnectTcp, Keepalive, Local, Remote, ServerAddr,
 };
 use linkerd_stack::{NewService, Param};
 use linkerd_tls as tls;
@@ -313,9 +313,9 @@ struct Tls(id::CrtKey);
 
 struct Server(SocketAddr);
 
-impl Param<ConnectAddr> for Target {
-    fn param(&self) -> ConnectAddr {
-        ConnectAddr(self.0)
+impl Param<Remote<ServerAddr>> for Target {
+    fn param(&self) -> Remote<ServerAddr> {
+        Remote(ServerAddr(self.0))
     }
 }
 

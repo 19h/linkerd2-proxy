@@ -9,7 +9,7 @@ mod orig_dst;
 pub use self::{
     addrs::{BindAddr, ClientAddr, Local, OrigDstAddr, Remote, ServerAddr},
     bind::{bind_tcp, Bind, BindTcp},
-    connect::{ConnectAddr, ConnectTcp},
+    connect::ConnectTcp,
     orig_dst::{DefaultOrigDstAddr, GetOrigDstAddr},
 };
 use std::time::Duration;

@@ -1,8 +1,8 @@
+use crate::addrs::{Remote, ServerAddr};
 use linkerd_io as io;
 use linkerd_stack::Param;
 use std::{
     future::Future,
-    net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
@@ -15,16 +15,16 @@ pub struct ConnectTcp {
     keepalive: Option<Duration>,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct ConnectAddr(pub SocketAddr);
-
 impl ConnectTcp {
     pub fn new(keepalive: Option<Duration>) -> Self {
         Self { keepalive }
     }
 }
 
-impl<T: Param<ConnectAddr>> tower::Service<T> for ConnectTcp {
+impl<T> tower::Service<T> for ConnectTcp
+where
+    T: Param<Remote<ServerAddr>>,
+{
     type Response = io::ScopedIo<TcpStream>;
     type Error = io::Error;
     type Future =
@@ -36,7 +36,7 @@ impl<T: Param<ConnectAddr>> tower::Service<T> for ConnectTcp {
 
     fn call(&mut self, t: T) -> Self::Future {
         let keepalive = self.keepalive;
-        let ConnectAddr(addr) = t.param();
+        let Remote(ServerAddr(addr)) = t.param();
         debug!(server.addr = %addr, "Connecting");
         Box::pin(async move {
             let io = TcpStream::connect(&addr).await?;
